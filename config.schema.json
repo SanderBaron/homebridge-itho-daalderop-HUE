@@ -2,177 +2,301 @@
   "pluginAlias": "HomebridgeIthoDaalderop",
   "pluginType": "platform",
   "singular": true,
-  "headerDisplay": "Please [read the README](https://github.com/jvandenaardweg/homebridge-itho-daalderop#readme) of the plugin for more information and instructions on how to configure it.",
+  "customUi": true,
+  "headerDisplay": "Control your Itho Daalderop mechanical ventilation via the WiFi add-on module. [Read the README](https://github.com/SanderBaron/homebridge-itho-daalderop-HUE#readme) for setup instructions.",
 
   "schema": {
     "type": "object",
     "properties": {
       "name": {
-        "title": "Bridge name",
+        "title": "Name",
         "type": "string",
         "required": true,
-        "placeholder": "Itho Daalderop",
-        "description": "You'll see this name when you add the bridge in your Home app and also in the logs within Homebridge.",
-        "default": "Itho Daalderop"
+        "default": "Itho Daalderop",
+        "placeholder": "Itho Daalderop"
       },
       "verboseLogging": {
-        "title": "Verbose Logging",
+        "title": "Verbose logging",
         "type": "boolean",
         "required": false,
-        "default": false,
-        "description": "If enabled, the plugin will log all debug messages. If everything works as expected, there's no need to enable this."
+        "default": false
       },
+
       "device": {
         "type": "object",
-        "title": "Device properties",
-
         "properties": {
           "co2Sensor": {
-            "title": "Using built-in CO2 Sensor",
+            "title": "Built-in CO₂ sensor",
             "type": "boolean",
             "required": false,
             "default": false
           },
           "nonCve": {
-            "title": "Is a HRU-350, DemandFlow, QualityFlow or HRU Eco Fan",
+            "title": "Non-CVE device (HRU-350, DemandFlow, QualityFlow or HRU Eco Fan)",
             "type": "boolean",
-            "required": false,
             "default": false
           }
         }
       },
+
       "api": {
         "type": "object",
-        "title": "MQTT Broker settings",
-        "description": "",
         "properties": {
           "protocol": {
-            "title": "API Protocol",
+            "title": "Protocol",
             "type": "string",
             "required": true,
             "default": "mqtt",
             "oneOf": [
-              {
-                "title": "HTTP",
-                "enum": ["http"]
-              },
-              {
-                "title": "MQTT",
-                "enum": ["mqtt"]
-              }
+              { "title": "MQTT (recommended)", "enum": ["mqtt"] },
+              { "title": "HTTP (polling)", "enum": ["http"] }
             ]
           },
           "ip": {
             "type": "string",
-            "title": "IP Address",
-            "placeholder": "192.168.0.10",
+            "title": "IP address",
+            "required": true,
+            "placeholder": "192.168.1.10",
             "format": "ipv4",
-            "required": true
+            "description": "MQTT broker IP (e.g. Mac Mini running Mosquitto) when using MQTT. Itho device IP when using HTTP."
           },
           "port": {
             "type": "number",
             "title": "Port",
-            "placeholder": "1883 (mqtt) or 80 (http)",
-            "required": true
+            "required": true,
+            "placeholder": "1883"
+          },
+          "deviceIp": {
+            "type": "string",
+            "title": "Itho device IP (for dashboard)",
+            "format": "ipv4",
+            "placeholder": "192.168.1.82",
+            "description": "Optional. Only needed when using MQTT and you want the live status dashboard to read directly from the Itho module."
           },
           "username": {
             "type": "string",
             "title": "Username",
-            "placeholder": "Optional",
-            "required": false
+            "required": false,
+            "placeholder": "Optional"
           },
           "password": {
             "type": "string",
             "title": "Password",
-            "placeholder": "Optional",
-            "required": false
+            "required": false,
+            "placeholder": "Optional"
+          }
+        }
+      },
+
+      "automation": {
+        "type": "object",
+        "properties": {
+          "humidity": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "title": "Enable humidity automation",
+                "type": "boolean",
+                "default": true
+              },
+              "boostThreshold": {
+                "title": "Boost trigger (%)",
+                "type": "number",
+                "default": 70,
+                "minimum": 50,
+                "maximum": 95
+              },
+              "dropThreshold": {
+                "title": "Drop threshold (%)",
+                "type": "number",
+                "default": 60,
+                "minimum": 40,
+                "maximum": 85
+              },
+              "cooldownMinutes": {
+                "title": "Cooldown timer (min)",
+                "type": "number",
+                "default": 20,
+                "minimum": 1,
+                "maximum": 120
+              },
+              "manualOverrideMinutes": {
+                "title": "Manual override duration (min)",
+                "type": "number",
+                "default": 60,
+                "minimum": 0,
+                "maximum": 240
+              }
+            }
+          },
+          "schedule": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "title": "Enable schedule",
+                "type": "boolean",
+                "default": false
+              },
+              "entries": {
+                "title": "Schedule entries",
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "label": {
+                      "title": "Label",
+                      "type": "string",
+                      "placeholder": "Morning airing",
+                      "required": true
+                    },
+                    "days": {
+                      "title": "Days",
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+                      },
+                      "uniqueItems": true
+                    },
+                    "from": {
+                      "title": "From (HH:MM)",
+                      "type": "string",
+                      "placeholder": "07:00",
+                      "required": true
+                    },
+                    "to": {
+                      "title": "To (HH:MM)",
+                      "type": "string",
+                      "placeholder": "08:00",
+                      "required": true
+                    },
+                    "speed": {
+                      "title": "Fan speed",
+                      "type": "string",
+                      "required": true,
+                      "oneOf": [
+                        { "title": "Low", "enum": ["low"] },
+                        { "title": "Medium", "enum": ["medium"] },
+                        { "title": "High", "enum": ["high"] }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
     }
   },
+
   "layout": [
     {
       "type": "flex",
       "flex-flow": "row wrap",
-      "orderable": false,
+      "items": [{ "key": "name" }]
+    },
+
+    {
+      "type": "fieldset",
+      "title": "Device type",
+      "expandable": true,
+      "expanded": false,
       "items": [
         {
-          "key": "name",
-          "type": "name"
+          "key": "device.co2Sensor",
+          "description": "Enable if your CVE unit has a built-in CO₂ sensor. The plugin will use virtual remote commands (low/medium/high) instead of raw speed values."
+        },
+        {
+          "key": "device.nonCve",
+          "description": "Enable for HRU-350, DemandFlow, QualityFlow or HRU Eco Fan."
         }
       ]
     },
+
     {
       "type": "fieldset",
-      "title": "Device properties",
+      "title": "Connection",
       "expandable": false,
-      "orderable": false,
-      "items": [
-        {
-          "items": [
-            {
-              "key": "device.co2Sensor",
-              "description": "Indicate wether your fan is using the built-in CO2 sensor. If so, the plugin will automatically switch to using virtual remote commands like low, medium or high instead of rotation speed 0 - 100 to set the fan speed. <a href='https://github.com/jvandenaardweg/homebridge-itho-daalderop#about-manual-speed-control'>More about this in the README</a>."
-            },
-            {
-              "key": "device.nonCve",
-              "description": "Indicate if your device is a non-CVE device like HRU-350, DemandFlow, QualityFlow or HRU Eco Fan. If so, the plugin will automatically switch to using virtual remote commands like low, medium or high instead of rotation speed 0 - 100 to set the fan speed. <a href='https://github.com/jvandenaardweg/homebridge-itho-daalderop#about-manual-speed-control'>More about this in the README</a>."
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "type": "fieldset",
-      "title": "API Settings",
-      "description": "Select which API protocol you want to use for this plugin. The HTTP API requires no additional setup. In order to use MQTT you must have set up a MQTT broker on your network. <a href='https://github.com/jvandenaardweg/homebridge-itho-daalderop#mqtt'>More about this in the README</a>.",
-      "expandable": false,
-      "orderable": false,
       "items": [
         {
           "type": "flex",
           "flex-flow": "row wrap",
           "items": [
+            { "key": "api.protocol" },
+            { "key": "api.ip" },
+            { "key": "api.port" }
+          ]
+        },
+        {
+          "type": "flex",
+          "flex-flow": "row wrap",
+          "items": [
+            { "key": "api.deviceIp" },
+            { "key": "api.username" },
+            { "key": "api.password" }
+          ]
+        },
+        { "key": "verboseLogging" }
+      ]
+    },
+
+    {
+      "type": "fieldset",
+      "title": "Humidity automation",
+      "description": "Automatically boost fan speed when shower humidity is detected on the internal exhaust sensor. Humidity is measured in the exhaust duct so it reacts quickly.",
+      "expandable": true,
+      "expanded": true,
+      "items": [
+        { "key": "automation.humidity.enabled" },
+        {
+          "type": "flex",
+          "flex-flow": "row wrap",
+          "items": [
+            { "key": "automation.humidity.boostThreshold", "description": "Fan goes to HIGH when this % is reached." },
+            { "key": "automation.humidity.dropThreshold", "description": "Cooldown timer starts when humidity drops below this %." }
+          ]
+        },
+        {
+          "type": "flex",
+          "flex-flow": "row wrap",
+          "items": [
+            { "key": "automation.humidity.cooldownMinutes", "description": "Minutes to keep running HIGH after humidity drops, before returning to auto." },
+            { "key": "automation.humidity.manualOverrideMinutes", "description": "After a manual speed change, automation is paused this many minutes." }
+          ]
+        }
+      ]
+    },
+
+    {
+      "type": "fieldset",
+      "title": "Schedule overrides",
+      "description": "Override fan speed during specific time windows — e.g. morning airing or cooking hours. Humidity automation takes priority over the schedule.",
+      "expandable": true,
+      "expanded": false,
+      "items": [
+        { "key": "automation.schedule.enabled" },
+        {
+          "key": "automation.schedule.entries",
+          "type": "array",
+          "items": [
+            { "key": "automation.schedule.entries[].label" },
             {
               "type": "flex",
               "flex-flow": "row wrap",
               "items": [
-                {
-                  "key": "api.protocol"
-                },
-                {
-                  "key": "api.ip"
-                },
-                {
-                  "key": "api.port"
-                }
+                { "key": "automation.schedule.entries[].from" },
+                { "key": "automation.schedule.entries[].to" },
+                { "key": "automation.schedule.entries[].speed" }
               ]
             },
             {
-              "type": "flex",
-              "flex-flow": "row wrap",
-              "items": [
-                {
-                  "key": "api.username"
-                },
-                {
-                  "key": "api.password"
-                },
-                {
-                  "key": "",
-                  "description": "The Itho WiFi module allows setting a username and password for using the HTTP API or MQTT. If you have set this, enter the username and password here."
-                }
-              ]
-            },
-            {
-              "type": "flex",
-              "flex-flow": "row wrap",
-              "items": [
-                {
-                  "key": "verboseLogging"
-                }
-              ]
+              "key": "automation.schedule.entries[].days",
+              "type": "checkboxes",
+              "titleMap": {
+                "mon": "Mon", "tue": "Tue", "wed": "Wed", "thu": "Thu",
+                "fri": "Fri", "sat": "Sat", "sun": "Sun"
+              }
             }
           ]
         }

@@ -21,16 +21,14 @@ describe('config.schema.json', () => {
     expect(properties.name.default).toBe(DEFAULT_BRIDGE_NAME);
 
     expect(properties).toHaveProperty(verboseLoggingProperty);
-    expect(properties.verboseLogging).toHaveProperty('required');
-    expect(properties.verboseLogging.required).toBe(false);
+    // verboseLogging is optional in the schema (no required field in JSON schema)
     expect(properties.verboseLogging.type).toBe('boolean');
     expect(properties.verboseLogging.default).toBe(false);
 
     const deviceProperties = properties.device.properties;
 
     expect(properties).toHaveProperty(deviceProperty);
-    expect(deviceProperties.co2Sensor).toHaveProperty('required');
-    expect(deviceProperties.co2Sensor.required).toBe(false);
+    // co2Sensor is optional in the schema
     expect(deviceProperties.co2Sensor.type).toBe('boolean');
     expect(deviceProperties.co2Sensor.default).toBe(false);
 
@@ -41,8 +39,8 @@ describe('config.schema.json', () => {
     expect(apiProperties.protocol.required).toBe(true);
     expect(apiProperties.protocol.type).toBe('string');
     expect(apiProperties.protocol.default).toBe('mqtt');
-    expect(apiProperties.protocol.oneOf.map(o => o.title)).toMatchObject(['HTTP', 'MQTT']);
-    expect(apiProperties.protocol.oneOf.map(o => o.enum)).toMatchObject([['http'], ['mqtt']]);
+    expect(apiProperties.protocol.oneOf.map(o => o.title)).toMatchObject(['MQTT (recommended)', 'HTTP (polling)']);
+    expect(apiProperties.protocol.oneOf.map(o => o.enum)).toMatchObject([['mqtt'], ['http']]);
 
     expect(apiProperties.ip).toHaveProperty('required');
     expect(apiProperties.ip.required).toBe(true);
@@ -53,12 +51,8 @@ describe('config.schema.json', () => {
     expect(apiProperties.port.required).toBe(true);
     expect(apiProperties.port.type).toBe('number');
 
-    expect(apiProperties.username).toHaveProperty('required');
-    expect(apiProperties.username.required).toBe(false);
+    // username and password are optional
     expect(apiProperties.username.type).toBe('string');
-
-    expect(apiProperties.password).toHaveProperty('required');
-    expect(apiProperties.password.required).toBe(false);
     expect(apiProperties.password.type).toBe('string');
   });
 

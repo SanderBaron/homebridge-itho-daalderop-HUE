@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Itho Daalderop</title>
+    <style>
+      :root {
+        --bg: #1a1a2e;
+        --card: #16213e;
+        --border: #0f3460;
+        --accent: #e94560;
+        --text: #eaeaea;
+        --muted: #8892b0;
+        --good: #4caf50;
+        --warn: #ff9800;
+        --bad: #f44336;
+      }
+
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        padding: 16px;
+        font-size: 14px;
+      }
+
+      h2 {
+        font-size: 18px;
+        font-weight: 600;
+        margin-bottom: 16px;
+        color: var(--text);
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+        gap: 12px;
+        margin-bottom: 20px;
+      }
+
+      .card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 14px 12px;
+        text-align: center;
+      }
+
+      .card .label {
+        font-size: 11px;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 6px;
+      }
+
+      .card .value {
+        font-size: 26px;
+        font-weight: 700;
+        line-height: 1.1;
+      }
+
+      .card .unit {
+        font-size: 12px;
+        color: var(--muted);
+        margin-top: 2px;
+      }
+
+      .badge {
+        display: inline-block;
+        padding: 3px 10px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 600;
+        background: var(--border);
+        color: var(--text);
+      }
+      .badge.good { background: #1b5e20; color: #a5d6a7; }
+      .badge.warn { background: #e65100; color: #ffe0b2; }
+      .badge.bad  { background: #b71c1c; color: #ffcdd2; }
+
+      .section-title {
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+        margin: 20px 0 8px;
+      }
+
+      .status-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 10px 14px;
+        margin-bottom: 8px;
+      }
+
+      .status-row .key { color: var(--muted); }
+      .status-row .val { font-weight: 600; }
+
+      .error-box {
+        background: #2d0000;
+        border: 1px solid var(--bad);
+        border-radius: 8px;
+        padding: 12px 16px;
+        color: #ef9a9a;
+        font-size: 13px;
+      }
+
+      #refresh-btn {
+        background: var(--accent);
+        color: white;
+        border: none;
+        border-radius: 6px;
+        padding: 8px 18px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        margin-top: 4px;
+      }
+      #refresh-btn:hover { opacity: 0.85; }
+      #refresh-btn:disabled { opacity: 0.4; cursor: default; }
+
+      #last-update {
+        color: var(--muted);
+        font-size: 11px;
+        margin-left: 10px;
+      }
+
+      .spinner {
+        display: inline-block;
+        width: 14px;
+        height: 14px;
+        border: 2px solid var(--muted);
+        border-top-color: var(--text);
+        border-radius: 50%;
+        animation: spin 0.7s linear infinite;
+        vertical-align: middle;
+        margin-right: 6px;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+
+      .hidden { display: none !important; }
+    </style>
+  </head>
+  <body>
+    <h2>Itho Daalderop — Live Status</h2>
+
+    <div id="loading">
+      <span class="spinner"></span> Fetching data from device…
+    </div>
+    <div id="error-area" class="hidden"></div>
+    <div id="dashboard" class="hidden">
+      <div class="grid">
+        <div class="card">
+          <div class="label">Fan speed</div>
+          <div class="value" id="val-speed">–</div>
+          <div class="unit">%</div>
+        </div>
+        <div class="card">
+          <div class="label">Fan mode</div>
+          <div class="value" style="font-size:18px;" id="val-faninfo">–</div>
+        </div>
+        <div class="card">
+          <div class="label">Humidity</div>
+          <div class="value" id="val-hum">–</div>
+          <div class="unit">%</div>
+        </div>
+        <div class="card">
+          <div class="label">Temperature</div>
+          <div class="value" id="val-temp">–</div>
+          <div class="unit">°C</div>
+        </div>
+        <div class="card">
+          <div class="label">CO₂</div>
+          <div class="value" id="val-co2">–</div>
+          <div class="unit">ppm</div>
+        </div>
+        <div class="card">
+          <div class="label">Air quality</div>
+          <div id="val-aq" class="badge">–</div>
+        </div>
+      </div>
+
+      <div class="section-title">Device details</div>
+      <div class="status-row">
+        <span class="key">Exhaust fan speed</span>
+        <span class="val"><span id="val-exhfan">–</span> %</span>
+      </div>
+      <div class="status-row">
+        <span class="key">Fan speed (rpm)</span>
+        <span class="val"><span id="val-rpm">–</span></span>
+      </div>
+      <div class="status-row">
+        <span class="key">Internal fault</span>
+        <span class="val" id="val-fault">–</span>
+      </div>
+      <div class="status-row">
+        <span class="key">Filter dirty</span>
+        <span class="val" id="val-filter">–</span>
+      </div>
+      <div class="status-row">
+        <span class="key">Total operation</span>
+        <span class="val"><span id="val-hours">–</span> hours</span>
+      </div>
+    </div>
+
+    <div style="margin-top:16px;">
+      <button id="refresh-btn" onclick="load()">Refresh</button>
+      <span id="last-update"></span>
+    </div>
+
+    <script>
+      async function load() {
+        const btn = document.getElementById('refresh-btn');
+        btn.disabled = true;
+
+        document.getElementById('loading').classList.remove('hidden');
+        document.getElementById('error-area').classList.add('hidden');
+        document.getElementById('dashboard').classList.add('hidden');
+
+        try {
+          const config = await homebridge.getPluginConfig();
+          const cfg = Array.isArray(config) ? config[0] : config;
+          const deviceIp = cfg?.api?.deviceIp || (cfg?.api?.protocol === 'http' ? cfg?.api?.ip : null);
+
+          if (!deviceIp) {
+            showError('No device IP configured. Set "Itho device IP (for dashboard)" in the Connection settings, or use HTTP protocol.');
+            return;
+          }
+
+          const result = await homebridge.request('/device-status', { deviceIp });
+
+          if (!result.ok) {
+            showError(`Could not reach device at ${deviceIp}: ${result.error}`);
+            return;
+          }
+
+          render(result.data);
+          document.getElementById('last-update').textContent =
+            `Updated ${new Date().toLocaleTimeString()}`;
+        } catch (err) {
+          showError(err.message || 'Unknown error');
+        } finally {
+          document.getElementById('loading').classList.add('hidden');
+          btn.disabled = false;
+        }
+      }
+
+      function render(d) {
+        set('val-speed', d['Speed status'] ?? d['ExhFanSpeed (%)'] ?? '–');
+        set('val-faninfo', d['FanInfo'] ?? '–');
+        set('val-hum', d.hum != null ? d.hum.toFixed(1) : '–');
+        set('val-temp', d.temp != null ? d.temp.toFixed(1) : '–');
+        set('val-co2', d['CO2level (ppm)'] ?? '–');
+        set('val-exhfan', d['ExhFanSpeed (%)'] ?? '–');
+        set('val-rpm', d['Fan speed (rpm)'] ?? '–');
+        set('val-fault', d['Internal fault'] ? '⚠ YES' : 'No');
+        set('val-filter', d['Filter dirty'] ? '⚠ YES' : 'No');
+        set('val-hours', d['Total operation (hours)'] ?? '–');
+
+        const aqEl = document.getElementById('val-aq');
+        const ppm = d['CO2level (ppm)'];
+        let aqText = 'Unknown', aqClass = '';
+        if (ppm != null) {
+          if (ppm < 350)       { aqText = 'Excellent'; aqClass = 'good'; }
+          else if (ppm < 1000) { aqText = 'Good';      aqClass = 'good'; }
+          else if (ppm < 2500) { aqText = 'Fair';      aqClass = 'warn'; }
+          else if (ppm < 5000) { aqText = 'Inferior';  aqClass = 'warn'; }
+          else                 { aqText = 'Poor';       aqClass = 'bad';  }
+        }
+        aqEl.textContent = aqText;
+        aqEl.className = `badge ${aqClass}`;
+
+        document.getElementById('dashboard').classList.remove('hidden');
+      }
+
+      function set(id, val) {
+        const el = document.getElementById(id);
+        if (el) el.textContent = val ?? '–';
+      }
+
+      function showError(msg) {
+        const el = document.getElementById('error-area');
+        el.innerHTML = `<div class="error-box">⚠ ${msg}</div>`;
+        el.classList.remove('hidden');
+      }
+
+      load();
+      setInterval(load, 30000);
+    </script>
+  </body>
+</html>

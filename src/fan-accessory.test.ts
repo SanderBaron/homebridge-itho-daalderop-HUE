@@ -1,13 +1,15 @@
-import { Characteristic } from 'hap-nodejs';
+import { Characteristic } from '@homebridge/hap-nodejs';
 import { ConfigSchema } from './config.schema';
 import { FanAccessory } from './fan-accessory';
 import { accessoryMock, platformMock } from './mocks/platform';
+import { vi } from 'vitest';
 import {
   PLATFORM_NAME,
   DEFAULT_BRIDGE_NAME,
   DEFAULT_FAN_NAME,
   ACTIVE_SPEED_THRESHOLD,
 } from './settings';
+import { IthoStatusSanitizedPayload } from './types';
 
 const configMock: ConfigSchema = {
   platform: PLATFORM_NAME,
@@ -22,344 +24,219 @@ const configMock: ConfigSchema = {
   },
 };
 
+const configManualMock: ConfigSchema = {
+  ...configMock,
+  device: undefined,
+};
+
+function makeStatusPayload(overrides: Partial<IthoStatusSanitizedPayload> = {}): IthoStatusSanitizedPayload {
+  return {
+    temp: 21.5,
+    hum: 55,
+    ppmw: 0,
+    'Speed status': 37,
+    'Internal fault': 0,
+    'Frost cycle': 0,
+    'Filter dirty': 0,
+    'AirQuality (%)': null,
+    'AirQbased on': null,
+    'CO2level (ppm)': 714,
+    'Indoorhumidity (%)': null,
+    'Outdoorhumidity (%)': null,
+    'Exhausttemp (°C)': null,
+    'SupplyTemp (°C)': null,
+    'IndoorTemp (°C)': null,
+    'OutdoorTemp (°C)': null,
+    SpeedCap: null,
+    'BypassPos (%)': null,
+    FanInfo: 'auto',
+    Actual_Mode: null,
+    'ExhFanSpeed (%)': 37,
+    'InFanSpeed (%)': 0,
+    'RemainingTime (min)': 0,
+    'PostHeat (%)': null,
+    'PreHeat (%)': null,
+    'InFlow (l sec)': null,
+    'ExhFlow (l sec)': null,
+    'Ventilation setpoint (%)': null,
+    'Fan setpoint (rpm)': 1030,
+    'Fan speed (rpm)': 1036,
+    Error: 0,
+    Selection: 7,
+    'Startup counter': 97,
+    'Total operation (hours)': 81269,
+    'Absence (min)': 0,
+    'Highest CO2 concentration (ppm)': 714,
+    'Highest RH concentration (%)': 59,
+    RelativeHumidity: null,
+    Temperature: null,
+    ...overrides,
+  };
+}
+
 describe('FanAccessory', () => {
   it('should create an instance', () => {
     const fanAccessory = new FanAccessory(platformMock, accessoryMock, configMock);
-
     expect(fanAccessory).toBeTruthy();
   });
 
   it('should have the correct displayName', () => {
     const fanAccessory = new FanAccessory(platformMock, accessoryMock, configMock);
-
     expect(fanAccessory['accessory'].displayName).toBe(DEFAULT_FAN_NAME);
   });
 
   describe('allowsManualSpeedControl', () => {
-    it('should return false when config options device.co2Sensor is true', () => {
-      const fanAccessory = new FanAccessory(platformMock, accessoryMock, {
-        ...configMock,
-        device: {
-          co2Sensor: true,
-        },
-      });
-
-      expect(fanAccessory['allowsManualSpeedControl']).toBe(false);
+    it('should return false when device.co2Sensor is true', () => {
+      const fa = new FanAccessory(platformMock, accessoryMock, { ...configMock, device: { co2Sensor: true } });
+      expect(fa['allowsManualSpeedControl']).toBe(false);
     });
 
-    it('should return false when config options device.nonCve is true', () => {
-      const fanAccessory = new FanAccessory(platformMock, accessoryMock, {
-        ...configMock,
-        device: {
-          nonCve: true,
-        },
-      });
-
-      expect(fanAccessory['allowsManualSpeedControl']).toBe(false);
+    it('should return false when device.nonCve is true', () => {
+      const fa = new FanAccessory(platformMock, accessoryMock, { ...configMock, device: { nonCve: true } });
+      expect(fa['allowsManualSpeedControl']).toBe(false);
     });
 
-    it('should return false when both config options device.co2Sensor ánd device.nonCve are true', () => {
-      const fanAccessory = new FanAccessory(platformMock, accessoryMock, {
-        ...configMock,
-        device: {
-          co2Sensor: true,
-          nonCve: true,
-        },
-      });
-
-      expect(fanAccessory['allowsManualSpeedControl']).toBe(false);
+    it('should return false when both co2Sensor and nonCve are true', () => {
+      const fa = new FanAccessory(platformMock, accessoryMock, { ...configMock, device: { co2Sensor: true, nonCve: true } });
+      expect(fa['allowsManualSpeedControl']).toBe(false);
     });
 
-    it('should return true when both config options device.co2Sensor ánd device.nonCve are false', () => {
-      const fanAccessory = new FanAccessory(platformMock, accessoryMock, {
-        ...configMock,
-        device: {
-          co2Sensor: false,
-          nonCve: false,
-        },
-      });
-
-      expect(fanAccessory['allowsManualSpeedControl']).toBe(true);
+    it('should return true when both are false', () => {
+      const fa = new FanAccessory(platformMock, accessoryMock, { ...configMock, device: { co2Sensor: false, nonCve: false } });
+      expect(fa['allowsManualSpeedControl']).toBe(true);
     });
 
-    it('should return true when the device option is undefined', () => {
-      const fanAccessory = new FanAccessory(platformMock, accessoryMock, {
-        ...configMock,
-        device: undefined,
-      });
-
-      expect(fanAccessory['allowsManualSpeedControl']).toBe(true);
+    it('should return true when device is undefined', () => {
+      const fa = new FanAccessory(platformMock, accessoryMock, { ...configMock, device: undefined });
+      expect(fa['allowsManualSpeedControl']).toBe(true);
     });
   });
 
-  describe('getTargetFanStateName()', () => {
-    it('should return the correct name for the target fan state', () => {
-      const fanAccessory = new FanAccessory(platformMock, accessoryMock, configMock);
+  describe('handleStatusResponse()', () => {
+    it('should update CurrentFanState to BLOWING_AIR for speed above threshold', () => {
+      const fa = new FanAccessory(platformMock, accessoryMock, configMock);
+      const updateSpy = vi.fn();
+      fa['service'].updateCharacteristic = updateSpy;
 
-      expect(fanAccessory['getTargetFanStateName'](Characteristic.TargetFanState.MANUAL)).toBe(
-        'MANUAL',
-      );
-      expect(fanAccessory['getTargetFanStateName'](Characteristic.TargetFanState.AUTO)).toBe(
-        'AUTO',
-      );
-    });
-  });
+      fa.handleStatusResponse(makeStatusPayload({ 'Speed status': 50 }));
 
-  describe('getCurrentFanStateName()', () => {
-    it('should return the correct name for the current fan state', () => {
-      const fanAccessory = new FanAccessory(platformMock, accessoryMock, configMock);
-
-      expect(fanAccessory['getCurrentFanStateName'](Characteristic.CurrentFanState.INACTIVE)).toBe(
-        'INACTIVE',
-      );
-      expect(fanAccessory['getCurrentFanStateName'](Characteristic.CurrentFanState.IDLE)).toBe(
-        'IDLE',
-      );
-      expect(
-        fanAccessory['getCurrentFanStateName'](Characteristic.CurrentFanState.BLOWING_AIR),
-      ).toBe('BLOWING_AIR');
-    });
-  });
-
-  describe('getActiveName()', () => {
-    it('should return the correct name for the active state', () => {
-      const fanAccessory = new FanAccessory(platformMock, accessoryMock, configMock);
-
-      expect(fanAccessory['getActiveName'](Characteristic.Active.INACTIVE)).toBe('INACTIVE');
-      expect(fanAccessory['getActiveName'](Characteristic.Active.ACTIVE)).toBe('ACTIVE');
-    });
-  });
-
-  describe('getActiveStateByRotationSpeed()', () => {
-    it('should return the correct active state for the given rotation speed', () => {
-      const fanAccessory = new FanAccessory(platformMock, accessoryMock, configMock);
-
-      expect(fanAccessory['getActiveStateByRotationSpeed'](0)).toBe(Characteristic.Active.INACTIVE);
-      expect(fanAccessory['getActiveStateByRotationSpeed'](19)).toBe(
-        Characteristic.Active.INACTIVE,
-      );
-
-      // 20 or 20+ should be active
-      expect(fanAccessory['getActiveStateByRotationSpeed'](20)).toBe(Characteristic.Active.ACTIVE);
-      expect(fanAccessory['getActiveStateByRotationSpeed'](21)).toBe(Characteristic.Active.ACTIVE);
-    });
-  });
-
-  describe('setRotationSpeed()', () => {
-    it('should set the correct rotation speed', () => {
-      const fanAccessory = new FanAccessory(platformMock, accessoryMock, configMock);
-
-      const mockRotationSpeed = 20;
-
-      const updateCharacteristicSpy = vi.fn();
-
-      fanAccessory['service'].updateCharacteristic = updateCharacteristicSpy;
-
-      fanAccessory['setRotationSpeed'](mockRotationSpeed);
-
-      expect(updateCharacteristicSpy).toHaveBeenCalledWith(
-        platformMock.Characteristic.RotationSpeed,
-        mockRotationSpeed,
-      );
-    });
-
-    it('should not set the rotation speed if the same value is already set', () => {
-      const fanAccessory = new FanAccessory(platformMock, accessoryMock, configMock);
-
-      const mockRotationSpeed = 20;
-
-      const updateCharacteristicSpy = vi.fn();
-
-      fanAccessory['service'].updateCharacteristic = updateCharacteristicSpy;
-
-      fanAccessory['service'].getCharacteristic = vi.fn().mockReturnValue({
-        value: mockRotationSpeed,
-      });
-
-      fanAccessory['setRotationSpeed'](mockRotationSpeed);
-
-      expect(updateCharacteristicSpy).not.toHaveBeenCalledWith(
-        platformMock.Characteristic.RotationSpeed,
-        mockRotationSpeed,
-      );
-    });
-  });
-
-  describe('setActive()', () => {
-    it('should set the correct active state', () => {
-      const fanAccessory = new FanAccessory(platformMock, accessoryMock, configMock);
-
-      const mockActiveState = Characteristic.Active.ACTIVE;
-
-      const updateCharacteristicSpy = vi.fn();
-
-      fanAccessory['service'].updateCharacteristic = updateCharacteristicSpy;
-
-      fanAccessory['setActive'](mockActiveState);
-
-      expect(updateCharacteristicSpy).toHaveBeenCalledWith(
-        platformMock.Characteristic.Active,
-        mockActiveState,
-      );
-    });
-
-    it('should set the correct active state', () => {
-      const fanAccessory = new FanAccessory(platformMock, accessoryMock, configMock);
-
-      const mockActiveState = Characteristic.Active.INACTIVE;
-
-      const updateCharacteristicSpy = vi.fn();
-
-      fanAccessory['service'].updateCharacteristic = updateCharacteristicSpy;
-
-      fanAccessory['setActive'](mockActiveState);
-
-      expect(updateCharacteristicSpy).toHaveBeenCalledWith(
-        platformMock.Characteristic.Active,
-        mockActiveState,
-      );
-    });
-
-    it('should not set the active state if the same value is already set', () => {
-      const fanAccessory = new FanAccessory(platformMock, accessoryMock, configMock);
-
-      const mockActiveState = Characteristic.Active.ACTIVE;
-
-      const updateCharacteristicSpy = vi.fn();
-
-      fanAccessory['service'].updateCharacteristic = updateCharacteristicSpy;
-
-      fanAccessory['service'].getCharacteristic = vi.fn().mockReturnValue({
-        value: mockActiveState,
-      });
-
-      fanAccessory['setActive'](mockActiveState);
-
-      expect(updateCharacteristicSpy).not.toHaveBeenCalledWith(
-        platformMock.Characteristic.Active,
-        mockActiveState,
-      );
-    });
-  });
-
-  describe('setCurrentFanState()', () => {
-    it('should set current fan state to INACTIVE when rotation speed is 0', () => {
-      const fanAccessory = new FanAccessory(platformMock, accessoryMock, configMock);
-
-      const mockRotationSpeed = 0;
-      const expected = Characteristic.CurrentFanState.INACTIVE;
-
-      const updateCharacteristicSpy = vi.fn();
-
-      fanAccessory['service'].updateCharacteristic = updateCharacteristicSpy;
-
-      fanAccessory['setCurrentFanState'](mockRotationSpeed);
-
-      expect(updateCharacteristicSpy).toHaveBeenCalledWith(
+      expect(updateSpy).toHaveBeenCalledWith(
         platformMock.Characteristic.CurrentFanState,
-        expected,
+        Characteristic.CurrentFanState.BLOWING_AIR,
       );
     });
 
-    it('should set the current fan state to IDLE when rotation speed is below the active speed threshold but above 0', () => {
-      const fanAccessory = new FanAccessory(platformMock, accessoryMock, configMock);
+    it('should update CurrentFanState to IDLE for speed below threshold', () => {
+      const fa = new FanAccessory(platformMock, accessoryMock, configMock);
+      const updateSpy = vi.fn();
+      fa['service'].updateCharacteristic = updateSpy;
 
-      const mockRotationSpeed = ACTIVE_SPEED_THRESHOLD - 1;
-      const expected = Characteristic.CurrentFanState.IDLE;
+      fa.handleStatusResponse(makeStatusPayload({ 'Speed status': ACTIVE_SPEED_THRESHOLD - 1 }));
 
-      const updateCharacteristicSpy = vi.fn();
-
-      fanAccessory['service'].updateCharacteristic = updateCharacteristicSpy;
-
-      fanAccessory['setCurrentFanState'](mockRotationSpeed);
-
-      expect(updateCharacteristicSpy).toHaveBeenCalledWith(
+      expect(updateSpy).toHaveBeenCalledWith(
         platformMock.Characteristic.CurrentFanState,
-        expected,
+        Characteristic.CurrentFanState.IDLE,
       );
     });
 
-    it('should set the current fan state to BLOWING_AIR when rotation speed is above the speed threshold', () => {
-      const fanAccessory = new FanAccessory(platformMock, accessoryMock, configMock);
+    it('should update CurrentFanState to INACTIVE for speed 0', () => {
+      const fa = new FanAccessory(platformMock, accessoryMock, configMock);
+      const updateSpy = vi.fn();
+      fa['service'].updateCharacteristic = updateSpy;
 
-      const mockRotationSpeed = ACTIVE_SPEED_THRESHOLD + 1;
-      const expected = Characteristic.CurrentFanState.BLOWING_AIR;
+      fa.handleStatusResponse(makeStatusPayload({ 'Speed status': 0 }));
 
-      const updateCharacteristicSpy = vi.fn();
-
-      fanAccessory['service'].updateCharacteristic = updateCharacteristicSpy;
-
-      fanAccessory['setCurrentFanState'](mockRotationSpeed);
-
-      expect(updateCharacteristicSpy).toHaveBeenCalledWith(
+      expect(updateSpy).toHaveBeenCalledWith(
         platformMock.Characteristic.CurrentFanState,
-        expected,
+        Characteristic.CurrentFanState.INACTIVE,
       );
+    });
+
+    it('should store the payload for later retrieval', () => {
+      const fa = new FanAccessory(platformMock, accessoryMock, configMock);
+      const payload = makeStatusPayload({ FanInfo: 'high' });
+      fa.handleStatusResponse(payload);
+      expect(fa['lastStatusPayload']).toBe(payload);
     });
   });
 
-  describe('sendVirtualRemoteCommand()', () => {
-    it('should send the correct command to the virtual remote for speed value 20', () => {
-      const fanAccessory = new FanAccessory(platformMock, accessoryMock, configMock);
+  describe('handleSpeedResponse()', () => {
+    it('should store the raw speed value', () => {
+      const fa = new FanAccessory(platformMock, accessoryMock, configMock);
+      fa.handleSpeedResponse(128);
+      expect(fa['lastStatePayload']).toBe(128);
+    });
+  });
 
-      const mockSpeedValue = 20;
-      const expected = 'low';
+  describe('handleSetRotationSpeed()', () => {
+    it('should call platform.sendVirtualRemoteCommand for co2Sensor devices', () => {
+      const fa = new FanAccessory(platformMock, accessoryMock, configMock); // co2Sensor=true
+      const spy = platformMock.sendVirtualRemoteCommand as ReturnType<typeof vi.fn>;
+      spy.mockClear();
 
-      const setVirtualRemoteCommandSpy = vi.fn();
+      fa.handleSetRotationSpeed(50);
 
-      const mqttApiClient = fanAccessory['mqttApiClient'];
-
-      if (!mqttApiClient) {
-        throw new Error('MQTT API client is not defined');
-      }
-
-      mqttApiClient['setVirtualRemoteCommand'] = setVirtualRemoteCommandSpy;
-
-      fanAccessory['sendVirtualRemoteCommand'](mockSpeedValue);
-
-      expect(setVirtualRemoteCommandSpy).toHaveBeenCalledWith(expected);
+      expect(spy).toHaveBeenCalledWith('medium');
     });
 
-    it('should send the correct command to the virtual remote for speed value 50', () => {
-      const fanAccessory = new FanAccessory(platformMock, accessoryMock, configMock);
+    it('should call platform.sendSpeed for manual-control devices', () => {
+      const fa = new FanAccessory(platformMock, accessoryMock, configManualMock);
+      const spy = platformMock.sendSpeed as ReturnType<typeof vi.fn>;
+      spy.mockClear();
 
-      const mockSpeedValue = 50;
-      const expected = 'medium';
+      fa.handleSetRotationSpeed(50); // 50% → ~127 raw
 
-      const setVirtualRemoteCommandSpy = vi.fn();
-
-      const mqttApiClient = fanAccessory['mqttApiClient'];
-
-      if (!mqttApiClient) {
-        throw new Error('MQTT API client is not defined');
-      }
-
-      mqttApiClient['setVirtualRemoteCommand'] = setVirtualRemoteCommandSpy;
-
-      fanAccessory['sendVirtualRemoteCommand'](mockSpeedValue);
-
-      expect(setVirtualRemoteCommandSpy).toHaveBeenCalledWith(expected);
+      expect(spy).toHaveBeenCalledWith(127);
     });
 
-    it('should send the correct command to the virtual remote for speed value 100', () => {
-      const fanAccessory = new FanAccessory(platformMock, accessoryMock, configMock);
+    it('should notify manual override on HomeKit change', () => {
+      const fa = new FanAccessory(platformMock, accessoryMock, configMock);
+      const spy = platformMock.notifyManualOverride as ReturnType<typeof vi.fn>;
+      spy.mockClear();
 
-      const mockSpeedValue = 100;
-      const expected = 'high';
+      fa.handleSetRotationSpeed(50);
 
-      const setVirtualRemoteCommandSpy = vi.fn();
+      expect(spy).toHaveBeenCalled();
+    });
+  });
 
-      const mqttApiClient = fanAccessory['mqttApiClient'];
+  describe('handleGetRotationSpeed()', () => {
+    it('should return speed from FanInfo for co2Sensor devices', async () => {
+      const fa = new FanAccessory(platformMock, accessoryMock, configMock);
+      fa.handleStatusResponse(makeStatusPayload({ FanInfo: 'high' }));
 
-      if (!mqttApiClient) {
-        throw new Error('MQTT API client is not defined');
-      }
+      const speed = await fa.handleGetRotationSpeed();
+      expect(speed).toBeGreaterThan(0);
+    });
 
-      mqttApiClient['setVirtualRemoteCommand'] = setVirtualRemoteCommandSpy;
+    it('should return 0 when no status available', async () => {
+      const fa = new FanAccessory(platformMock, accessoryMock, configMock);
+      const speed = await fa.handleGetRotationSpeed();
+      expect(speed).toBe(0);
+    });
 
-      fanAccessory['sendVirtualRemoteCommand'](mockSpeedValue);
+    it('should return converted speed for manual-control devices', async () => {
+      const fa = new FanAccessory(platformMock, accessoryMock, configManualMock);
+      fa.handleSpeedResponse(127); // ~50%
 
-      expect(setVirtualRemoteCommandSpy).toHaveBeenCalledWith(expected);
+      const speed = await fa.handleGetRotationSpeed();
+      expect(speed).toBeCloseTo(50, 0);
+    });
+  });
+
+  describe('handleGetActive()', () => {
+    it('should return ACTIVE when RotationSpeed is not nil', () => {
+      const fa = new FanAccessory(platformMock, accessoryMock, configMock);
+      fa['service'].getCharacteristic = vi.fn().mockReturnValue({ value: 50 });
+
+      expect(fa.handleGetActive()).toBe(Characteristic.Active.ACTIVE);
+    });
+
+    it('should return ACTIVE when RotationSpeed is nil', () => {
+      const fa = new FanAccessory(platformMock, accessoryMock, configMock);
+      fa['service'].getCharacteristic = vi.fn().mockReturnValue({ value: null });
+
+      expect(fa.handleGetActive()).toBe(Characteristic.Active.ACTIVE);
     });
   });
 });

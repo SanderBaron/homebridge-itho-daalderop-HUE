@@ -1,14 +1,11 @@
 import { IthoDaalderopAccessoryContext } from '@/types';
 import { HomebridgeIthoDaalderop } from '@/platform';
-import { Accessory, Characteristic, Service } from 'hap-nodejs';
+import { Accessory, Characteristic, Service } from '@homebridge/hap-nodejs';
 import { PlatformAccessory } from 'homebridge';
 import { mockUUID, mockAccessoryContext, mockDisplayName } from './fan-accessory';
 import { loggerMock } from './logger';
 
-// export const mockSetCharacteristics = vi.fn((category, value) => {
 export const mockSetCharacteristics = vi.fn(() => {
-  //   console.log('set', category, value);
-
   return {
     updateValue: vi.fn().mockReturnThis(),
     onSet: vi.fn().mockReturnThis(),
@@ -19,13 +16,6 @@ export const mockSetCharacteristics = vi.fn(() => {
 });
 
 const mockGetCharacteristics = () => {
-  //   console.log('get', category);
-  // if (category === 'FirmwareRevision') {
-  //   return {
-  //     value: mockFirmwareVersion,
-  //   };
-  // }
-
   return {
     updateValue: vi.fn().mockReturnThis(),
     onSet: vi.fn().mockReturnThis(),
@@ -33,26 +23,15 @@ const mockGetCharacteristics = () => {
     getCharacteristics: mockGetCharacteristics,
     setCharacteristics: mockSetCharacteristics,
     setProps: vi.fn().mockReturnThis(),
+    value: null,
   };
 };
 
-const getServiceMock = () => {
-  // const getServiceMock = category => {
-  // console.log('get service', category);
-  return {
-    setCharacteristic: mockSetCharacteristics,
-    getCharacteristic: mockGetCharacteristics,
-  };
-};
-
-const addServiceMock = () => {
-  // const addServiceMock = category => {
-  // console.log('add service', category);
-  return {
-    setCharacteristic: mockSetCharacteristics,
-    getCharacteristic: mockGetCharacteristics,
-  };
-};
+const getServiceMock = () => ({
+  setCharacteristic: mockSetCharacteristics,
+  getCharacteristic: mockGetCharacteristics,
+  updateCharacteristic: vi.fn(),
+});
 
 export const platformMock = {
   log: loggerMock,
@@ -69,22 +48,23 @@ export const platformMock = {
   },
   Service,
   Characteristic,
+  notifyManualOverride: vi.fn(),
+  sendVirtualRemoteCommand: vi.fn(),
+  sendSpeed: vi.fn(),
+  isManualOverrideActive: vi.fn().mockReturnValue(false),
 } as unknown as HomebridgeIthoDaalderop;
 
 export const accessoryMock = {
-  context: {
-    energySocket: mockAccessoryContext,
-  },
+  context: mockAccessoryContext,
   getService: getServiceMock,
-  addService: addServiceMock,
-  // addService: vi.fn(),
+  addService: getServiceMock,
   on: vi.fn(),
   emit: vi.fn(),
   removeService: vi.fn(),
   displayName: mockDisplayName,
   UUID: mockUUID,
   _associatedHAPAccessory: {} as Accessory,
-  category: '' as any,
+  category: '' as unknown,
   reachable: true,
   services: [],
   getServiceById: vi.fn(),

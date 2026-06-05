@@ -12,20 +12,31 @@ import {
 import {
   DEFAULT_AIR_QUALITY_SENSOR_NAME,
   DEFAULT_FAN_NAME,
+  DEFAULT_HUMIDITY_BOOST_THRESHOLD,
+  DEFAULT_HUMIDITY_COOLDOWN_MINUTES,
+  DEFAULT_HUMIDITY_DROP_THRESHOLD,
+  DEFAULT_MANUAL_OVERRIDE_MINUTES,
+  MQTT_STATE_TOPIC,
+  MQTT_STATUS_TOPIC,
   PLATFORM_NAME,
   PLUGIN_NAME,
 } from '@/settings';
 import { FanAccessory } from '@/fan-accessory';
 import { ZodError } from 'zod';
 import { ConfigSchema, configSchema } from './config.schema';
-import { IthoDaalderopAccessoryContext } from './types';
+import {
+  IthoDaalderopAccessoryContext,
+  IthoStatusSanitizedPayload,
+  SupportedVirtualRemoteCommands,
+  VirtualRemoteCommand,
+} from './types';
 import { AirQualitySensorAccessory } from './air-quality-sensor-accessory';
+import { MqttApi } from './api/mqtt';
+import { HttpApi } from './api/http';
+import { sanitizeStatusPayload } from './utils/api';
+import { HumidityAutomation } from './automations/humidity-automation';
+import { ScheduleEngine } from './automations/schedule-engine';
 
-/**
- * HomebridgePlatform
- * This class is the main constructor for your plugin, this is where you should
- * parse the user config and discover/register accessories with Homebridge.
- */
 export class HomebridgeIthoDaalderop implements DynamicPlatformPlugin {
   public readonly Service: typeof Service = this.api.hap.Service;
   public readonly Characteristic: typeof Characteristic = this.api.hap.Characteristic;
@@ -33,211 +44,284 @@ export class HomebridgeIthoDaalderop implements DynamicPlatformPlugin {
   public cachedAccessories: PlatformAccessory<IthoDaalderopAccessoryContext>[] = [];
 
   private config: ConfigSchema;
+  private mqttClient: MqttApi | null = null;
+  private httpClient: HttpApi | null = null;
 
-  private loggerPrefix: string;
+  private fanAccessory: FanAccessory | null = null;
+  private airQualityAccessory: AirQualitySensorAccessory | null = null;
+
+  private humidityAutomation: HumidityAutomation | null = null;
+  private scheduleEngine: ScheduleEngine | null = null;
+
+  private manualOverrideUntil: number | null = null;
+  private readonly manualOverrideMinutes: number;
 
   constructor(public readonly log: Logger, config: PlatformConfig, public readonly api: API) {
-    const loggerPrefix = `[Platform Setup] -> `;
-    this.loggerPrefix = loggerPrefix;
-
     this.config = config as ConfigSchema;
+    this.manualOverrideMinutes =
+      (config as ConfigSchema).automation?.humidity?.manualOverrideMinutes ??
+      DEFAULT_MANUAL_OVERRIDE_MINUTES;
 
-    this.log.debug(loggerPrefix, 'Finished initializing platform:', config.name);
-
-    // When this event is fired it means Homebridge has restored all cached accessories from disk.
-    // Dynamic Platform plugins should only register new accessories after this event was fired,
-    // in order to ensure they were not added to homebridge already. This event can also be used
-    // to start discovery of new accessories.
-    this.api.on(APIEvent.DID_FINISH_LAUNCHING, this.handleOnDidFinishLaunching.bind(this));
-
-    // On Homebridge shutdown, cleanup some things
-    // Note: this is not called when our plugin is uninstalled
-    this.api.on(APIEvent.SHUTDOWN, this.handleOnShutdown.bind(this));
+    this.api.on(APIEvent.DID_FINISH_LAUNCHING, this.handleDidFinishLaunching.bind(this));
+    this.api.on(APIEvent.SHUTDOWN, this.handleShutdown.bind(this));
   }
 
-  handleOnDidFinishLaunching() {
-    this.log.debug(this.loggerPrefix, 'Executed didFinishLaunching callback');
+  // ---- Lifecycle ----------------------------------------------------------
 
-    // Check if the config is valid. We do this here to prevent bugs later.
-    // It also helps the user in setting the config properly, if not used from within the UI, but manually adjusted in the config.json file.
-    if (!this.isValidConfigSchema(this.config)) {
+  private handleDidFinishLaunching(): void {
+    if (!this.isValidConfig(this.config)) {
       this.log.error(
-        this.loggerPrefix,
-        `Please fix the issues in your config.json file for this plugin. Once fixed, restart Homebridge.`,
+        '[Platform] Invalid config — fix config.json and restart Homebridge.',
       );
       return;
     }
 
-    this.addFanAccessory(DEFAULT_FAN_NAME, this.api.hap.uuid.generate(DEFAULT_FAN_NAME));
+    this.setupApiClients();
+    this.setupAutomations();
+    this.registerAccessories();
+  }
 
+  private handleShutdown(): void {
+    this.log.debug('[Platform] Shutting down');
+    this.mqttClient?.end();
+    this.humidityAutomation?.destroy();
+    this.scheduleEngine?.destroy();
+  }
+
+  configureAccessory(accessory: PlatformAccessory<IthoDaalderopAccessoryContext>): void {
+    this.log.debug(`[Platform] Restoring cached accessory: ${accessory.displayName}`);
+    this.cachedAccessories.push(accessory);
+  }
+
+  // ---- Setup --------------------------------------------------------------
+
+  private setupApiClients(): void {
+    if (this.config.api.protocol === 'mqtt') {
+      this.mqttClient = new MqttApi({
+        ip: this.config.api.ip,
+        port: this.config.api.port,
+        username: this.config.api.username,
+        password: this.config.api.password,
+        logger: this.log,
+        verboseLogging: this.config.verboseLogging,
+      });
+      this.mqttClient.subscribe([MQTT_STATE_TOPIC, MQTT_STATUS_TOPIC]);
+      this.mqttClient.on('message', this.handleMqttMessage.bind(this));
+    }
+
+    // HTTP client: device IP when protocol=http, or optional deviceIp override when protocol=mqtt
+    const deviceIp =
+      this.config.api.deviceIp ??
+      (this.config.api.protocol === 'http' ? this.config.api.ip : undefined);
+
+    if (deviceIp) {
+      this.httpClient = new HttpApi({
+        ip: deviceIp,
+        username: this.config.api.username,
+        password: this.config.api.password,
+        logger: this.log,
+        verboseLogging: this.config.verboseLogging,
+      });
+    }
+  }
+
+  private setupAutomations(): void {
+    const humCfg = this.config.automation?.humidity;
+
+    this.humidityAutomation = new HumidityAutomation(
+      {
+        enabled: humCfg?.enabled !== false,
+        boostThreshold: humCfg?.boostThreshold ?? DEFAULT_HUMIDITY_BOOST_THRESHOLD,
+        dropThreshold: humCfg?.dropThreshold ?? DEFAULT_HUMIDITY_DROP_THRESHOLD,
+        cooldownMinutes: humCfg?.cooldownMinutes ?? DEFAULT_HUMIDITY_COOLDOWN_MINUTES,
+      },
+      this.handleAutomationSpeedChange.bind(this),
+      this.log,
+    );
+
+    const schedCfg = this.config.automation?.schedule;
+    if (schedCfg?.enabled) {
+      this.scheduleEngine = new ScheduleEngine(
+        { enabled: true, entries: schedCfg.entries ?? [] },
+        this.handleScheduleSpeedChange.bind(this),
+        this.log,
+      );
+      this.scheduleEngine.start();
+    }
+  }
+
+  private registerAccessories(): void {
+    this.addFanAccessory(DEFAULT_FAN_NAME, this.api.hap.uuid.generate(DEFAULT_FAN_NAME));
     this.addAirQualitySensor(
       DEFAULT_AIR_QUALITY_SENSOR_NAME,
       this.api.hap.uuid.generate(DEFAULT_AIR_QUALITY_SENSOR_NAME),
     );
   }
 
-  handleOnShutdown() {
-    this.log.debug(this.loggerPrefix, 'Executed shutdown callback');
+  // ---- Accessory registration ---------------------------------------------
+
+  private addFanAccessory(displayName: string, uuid: string): void {
+    const existing = this.cachedAccessories.find(
+      a => a.UUID === uuid,
+    ) as PlatformAccessory<IthoDaalderopAccessoryContext> | undefined;
+
+    let accessory: PlatformAccessory<IthoDaalderopAccessoryContext>;
+    if (existing) {
+      this.log.info('[Platform] Restoring fan accessory from cache');
+      this.api.updatePlatformAccessories([existing]);
+      accessory = existing;
+    } else {
+      this.log.info('[Platform] Registering new fan accessory');
+      accessory = new this.api.platformAccessory<IthoDaalderopAccessoryContext>(
+        displayName,
+        uuid,
+      );
+      this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
+    }
+
+    this.fanAccessory = new FanAccessory(this, accessory, this.config);
+
+    if (this.config.api.protocol === 'http' && this.httpClient) {
+      this.httpClient.polling.getSpeed.start();
+      this.httpClient.polling.getStatus.start();
+      this.httpClient.polling.getSpeed.on('response.getSpeed', s =>
+        this.fanAccessory?.handleSpeedResponse(s),
+      );
+      this.httpClient.polling.getStatus.on('response.getStatus', p =>
+        this.handleStatusPayload(p as IthoStatusSanitizedPayload),
+      );
+    }
   }
 
-  /**
-   * This function is invoked when homebridge restores cached accessories from disk at startup.
-   * It should be used to setup event handlers for characteristics and update respective values.
-   */
-  configureAccessory(accessory: PlatformAccessory<IthoDaalderopAccessoryContext>): void {
-    this.log.debug(this.loggerPrefix, `Loading accessory from cache: ${accessory.displayName}`);
+  private addAirQualitySensor(displayName: string, uuid: string): void {
+    const existing = this.cachedAccessories.find(
+      a => a.UUID === uuid,
+    ) as PlatformAccessory<IthoDaalderopAccessoryContext> | undefined;
 
-    this.cachedAccessories.push(accessory);
+    let accessory: PlatformAccessory<IthoDaalderopAccessoryContext>;
+    if (existing) {
+      this.log.info('[Platform] Restoring air quality sensor from cache');
+      this.api.updatePlatformAccessories([existing]);
+      accessory = existing;
+    } else {
+      this.log.info('[Platform] Registering new air quality sensor accessory');
+      accessory = new this.api.platformAccessory<IthoDaalderopAccessoryContext>(
+        displayName,
+        uuid,
+      );
+      this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
+    }
+
+    this.airQualityAccessory = new AirQualitySensorAccessory(this, accessory, this.config);
   }
 
-  /**
-   * We should prevent the plugin from starting if the config is invalid.
-   */
-  isValidConfigSchema(config: ConfigSchema): boolean {
+  // ---- MQTT message routing -----------------------------------------------
+
+  private handleMqttMessage(topic: string, message: Buffer): void {
+    const text = message.toString();
+
+    if (topic === MQTT_STATUS_TOPIC) {
+      try {
+        const payload = sanitizeStatusPayload<IthoStatusSanitizedPayload>(text);
+        this.handleStatusPayload(payload);
+      } catch {
+        this.log.error('[Platform] Failed to parse MQTT status payload');
+      }
+      return;
+    }
+
+    if (topic === MQTT_STATE_TOPIC) {
+      const speed = Number(text);
+      if (!Number.isNaN(speed)) {
+        this.fanAccessory?.handleSpeedResponse(speed);
+      }
+    }
+  }
+
+  private handleStatusPayload(payload: IthoStatusSanitizedPayload): void {
+    this.fanAccessory?.handleStatusResponse(payload);
+    this.airQualityAccessory?.handleStatusResponse(payload);
+
+    if (payload.hum !== null && payload.hum !== undefined) {
+      this.humidityAutomation?.update(payload.hum);
+    }
+  }
+
+  // ---- Automation callbacks -----------------------------------------------
+
+  private handleAutomationSpeedChange(speed: SupportedVirtualRemoteCommands | 'auto'): void {
+    if (this.isManualOverrideActive()) {
+      this.log.debug('[Platform] Manual override active — ignoring humidity automation');
+      return;
+    }
+
+    if (speed === 'auto') {
+      // If a schedule is active, apply that speed; otherwise return to medium
+      const entry = this.scheduleEngine?.getActiveEntry();
+      this.sendVirtualRemoteCommand(entry ? entry.speed : 'medium');
+    } else {
+      this.sendVirtualRemoteCommand(speed);
+    }
+  }
+
+  private handleScheduleSpeedChange(speed: SupportedVirtualRemoteCommands | null): void {
+    if (this.isManualOverrideActive()) return;
+    if (this.humidityAutomation?.getState() === 'boost') return; // humidity has priority
+
+    this.sendVirtualRemoteCommand(speed ?? 'medium');
+  }
+
+  // ---- Public API for accessories -----------------------------------------
+
+  /** Notify the platform that the user manually changed the fan in HomeKit. */
+  notifyManualOverride(): void {
+    const ms = this.manualOverrideMinutes * 60_000;
+    this.manualOverrideUntil = Date.now() + ms;
+    this.log.info(`[Platform] Manual override active for ${this.manualOverrideMinutes} min`);
+    if (this.humidityAutomation?.getState() !== 'idle') {
+      this.humidityAutomation?.cancel();
+    }
+  }
+
+  isManualOverrideActive(): boolean {
+    if (!this.manualOverrideUntil) return false;
+    if (Date.now() > this.manualOverrideUntil) {
+      this.manualOverrideUntil = null;
+      return false;
+    }
+    return true;
+  }
+
+  sendVirtualRemoteCommand(command: VirtualRemoteCommand | SupportedVirtualRemoteCommands): void {
+    if (this.mqttClient) {
+      this.mqttClient.setVirtualRemoteCommand(command as VirtualRemoteCommand);
+    } else if (this.httpClient) {
+      this.httpClient.setVirtualRemoteCommand(command as VirtualRemoteCommand);
+    }
+  }
+
+  sendSpeed(speed: number): void {
+    if (this.mqttClient) {
+      this.mqttClient.setSpeed(speed);
+    } else if (this.httpClient) {
+      this.httpClient.setSpeed(speed);
+    }
+  }
+
+  // ---- Config validation --------------------------------------------------
+
+  isValidConfig(config: ConfigSchema): boolean {
     try {
       configSchema.parse(config);
-
       return true;
     } catch (err) {
       if (err instanceof ZodError) {
-        const mappedErrors = err.errors.map(err => {
-          return `${err.message} at: ${err.path.join('.')}`;
-        });
-
-        this.log.error(
-          this.loggerPrefix,
-          `There is an error in your config: ${JSON.stringify(mappedErrors)}`,
-        );
-
+        const msgs = err.errors.map(e => `${e.message} at: ${e.path.join('.')}`);
+        this.log.error(`[Platform] Config error: ${JSON.stringify(msgs)}`);
         return false;
       }
-
-      this.log.error(
-        this.loggerPrefix,
-        `A unknown error happened while validation your config: ${JSON.stringify(err)}`,
-      );
-
+      this.log.error(`[Platform] Unknown config error: ${JSON.stringify(err)}`);
       return false;
     }
-  }
-
-  addFanAccessory(displayName: string, uuid: string) {
-    try {
-      const existingAccessory = this.cachedAccessories.find(
-        accessory => accessory.UUID === uuid,
-      ) as PlatformAccessory<IthoDaalderopAccessoryContext>;
-
-      if (!existingAccessory) {
-        // The accessory does not yet exist, so we need to create it
-
-        this.log.info(this.loggerPrefix, 'Adding new fan accessory:', uuid);
-
-        // Create a new accessory
-        const newAccessory = new this.api.platformAccessory<IthoDaalderopAccessoryContext>(
-          displayName,
-          uuid,
-        );
-
-        // Create the accessory handler for the newly create accessory
-        this.attachFanAccessoryToPlatform(newAccessory);
-
-        // Link the accessory to your platform
-        this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [newAccessory]);
-
-        return;
-      }
-
-      // When we end up here, accessory is found in cache
-
-      // The accessory already exists, so we can restore it from our cache
-      this.log.info(
-        this.loggerPrefix,
-        `Restoring existing fan accessory from cache: ${existingAccessory.displayName}`,
-      );
-
-      // Update the existing accessory with the new data, for example, the IP address might have changed
-      // existingAccessory.context.somethingExtra = 'asd';
-      this.api.updatePlatformAccessories([existingAccessory]);
-
-      // Create the accessory handler for the restored accessory
-      this.attachFanAccessoryToPlatform(existingAccessory);
-    } catch (error) {
-      this.log.error(
-        this.loggerPrefix,
-        `Error while adding the fan accessory: ${JSON.stringify(error)}`,
-      );
-    }
-  }
-
-  addAirQualitySensor(displayName: string, uuid: string) {
-    try {
-      const existingAccessory = this.cachedAccessories.find(
-        accessory => accessory.UUID === uuid,
-      ) as PlatformAccessory<IthoDaalderopAccessoryContext>;
-
-      if (!existingAccessory) {
-        // The accessory does not yet exist, so we need to create it
-
-        this.log.info(this.loggerPrefix, 'Adding new air quality sensor accessory:', uuid);
-
-        // Create a new accessory
-        const newAccessory = new this.api.platformAccessory<IthoDaalderopAccessoryContext>(
-          displayName,
-          uuid,
-        );
-
-        // Create the accessory handler for the newly create accessory
-        this.attachAirQualitySensorAccessoryToPlatform(newAccessory);
-
-        // Link the accessory to your platform
-        this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [newAccessory]);
-
-        return;
-      }
-
-      // When we end up here, accessory is found in cache
-
-      // The accessory already exists, so we can restore it from our cache
-      this.log.info(
-        this.loggerPrefix,
-        `Restoring existing air quality sensor accessory from cache: ${existingAccessory.displayName}`,
-      );
-
-      // Update the existing accessory with the new data, for example, the IP address might have changed
-      // existingAccessory.context.somethingExtra = 'asd';
-      this.api.updatePlatformAccessories([existingAccessory]);
-
-      // Create the accessory handler for the restored accessory
-      this.attachAirQualitySensorAccessoryToPlatform(existingAccessory);
-    } catch (error) {
-      this.log.error(
-        this.loggerPrefix,
-        `Error while adding the air quality sensor accessory: ${JSON.stringify(error)}`,
-      );
-    }
-  }
-
-  attachFanAccessoryToPlatform(accessory: PlatformAccessory<IthoDaalderopAccessoryContext>): void {
-    this.log.debug(
-      this.loggerPrefix,
-      'Attaching fan accessory to platform:',
-      accessory.displayName,
-    );
-
-    // Create the accessory handler for the restored accessory
-    new FanAccessory(this, accessory, this.config);
-  }
-
-  attachAirQualitySensorAccessoryToPlatform(
-    accessory: PlatformAccessory<IthoDaalderopAccessoryContext>,
-  ): void {
-    this.log.debug(
-      this.loggerPrefix,
-      'Attaching air qualoty sensor accessory to platform:',
-      accessory.displayName,
-    );
-
-    // Create the accessory handler for the restored accessory
-    new AirQualitySensorAccessory(this, accessory, this.config);
   }
 }

@@ -1,5 +1,5 @@
 export interface IthoDaalderopAccessoryContext {
-  somethingExtra: string;
+  accessoryType?: 'fan' | 'airQuality';
 }
 
 export const virtualRemoteCommands = [
@@ -12,16 +12,15 @@ export const virtualRemoteCommands = [
   'join',
   'leave',
 ] as const;
-export type VirtualRemoteCommand = typeof virtualRemoteCommands[number];
+export type VirtualRemoteCommand = (typeof virtualRemoteCommands)[number];
 
 // https://github.com/arjenhiemstra/ithowifi/wiki/Controlling-the-speed-of-a-fan
 export type FanInfo = 'auto' | 'low' | 'medium' | 'high';
 
-// https://github.com/arjenhiemstra/ithowifi/wiki/Non-CVE-units-support#how-to-control-the-speed
-// 1 = Low, 2 = Medium, 3 = high, 24 = Automatic
+// https://github.com/arjenhiemstra/ithowifi/wiki/Non-CVE-units-support
+// 1 = Low, 2 = Medium, 3 = High, 24 = Automatic
 export type ActualMode = 1 | 2 | 3 | 24;
 
-// Unknown what the values are, my box seems to show "7" when FanInfo is "auto", so i
 export type Selection = 'auto' | 'low' | 'medium' | 'high' | 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
 export interface IthoStatusSanitizedPayload {
@@ -43,8 +42,8 @@ export interface IthoStatusSanitizedPayload {
   'OutdoorTemp (°C)': number | null;
   SpeedCap: number | null;
   'BypassPos (%)': number | null;
-  FanInfo?: FanInfo | null; // cve
-  Actual_Mode?: ActualMode | null; // non-cve
+  FanInfo?: FanInfo | null;
+  Actual_Mode?: ActualMode | null;
   'ExhFanSpeed (%)': number | null;
   'InFanSpeed (%)': number | null;
   'RemainingTime (min)': number | null;
@@ -70,10 +69,9 @@ export type IthoStatusPayload = {
   [K in keyof IthoStatusSanitizedPayload]: number | string;
 };
 
-export type IthoGetSpeedResponse = number; // example: 45
-export type IthoSetSpeedResponse = number; // example: 45
-
-export type IthoStatePayload = string; // example: "45"
+export type IthoGetSpeedResponse = number;
+export type IthoSetSpeedResponse = number;
+export type IthoStatePayload = string;
 
 export enum VirtualRemoteOptions {
   LOW = 'low',
@@ -87,7 +85,30 @@ export enum VirtualRemoteOptions {
 }
 
 export const supportedVirtualRemoteCommands = ['low', 'medium', 'high'] as const;
-
-export type SupportedVirtualRemoteCommands = typeof supportedVirtualRemoteCommands[number];
-
+export type SupportedVirtualRemoteCommands = (typeof supportedVirtualRemoteCommands)[number];
 export type VirtualRemoteMapping = Record<SupportedVirtualRemoteCommands, [number, number]>;
+
+// --- Schedule engine ---
+
+export type DayOfWeek = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
+
+export interface ScheduleEntry {
+  label: string;
+  days: DayOfWeek[];
+  from: string; // HH:MM
+  to: string; // HH:MM
+  speed: SupportedVirtualRemoteCommands;
+}
+
+// --- Automation state ---
+
+export type HumidityAutomationState = 'idle' | 'boost' | 'cooldown';
+export type AutomationSource = 'manual' | 'humidity' | 'schedule' | 'auto';
+
+export interface AutomationStatus {
+  humidityState: HumidityAutomationState;
+  activeScheduleLabel: string | null;
+  currentSource: AutomationSource;
+  manualOverrideExpiresAt: number | null;
+  cooldownEndsAt: number | null;
+}

@@ -1,7 +1,7 @@
 import { MQTT_CMD_TOPIC } from '@/settings';
 import { VirtualRemoteCommand } from '@/types';
 import { Logger } from 'homebridge';
-import mqtt from 'mqtt';
+import mqtt, { IConnackPacket, MqttClient } from 'mqtt';
 
 interface MqttApiOptions {
   ip: string;
@@ -13,72 +13,64 @@ interface MqttApiOptions {
 }
 
 export class MqttApi {
-  private readonly mqttApiClient: mqtt.Client;
+  private readonly client: MqttClient;
   private readonly logger: Logger;
   private readonly verboseLogging: boolean;
 
   constructor(options: MqttApiOptions) {
-    this.mqttApiClient = mqtt.connect({
+    this.client = mqtt.connect({
       host: options.ip,
       port: options.port,
       username: options.username,
       password: options.password,
-      reconnectPeriod: 10000, // 10 seconds
+      reconnectPeriod: 10_000,
     });
 
-    this.mqttApiClient.on('connect', this.handleMqttConnect.bind(this));
-    this.mqttApiClient.on('error', this.handleMqttError.bind(this));
+    this.client.on('connect', this.handleConnect.bind(this));
+    this.client.on('error', this.handleError.bind(this));
 
     this.logger = options.logger;
-
-    this.verboseLogging = options.verboseLogging || false;
+    this.verboseLogging = options.verboseLogging ?? false;
   }
 
-  protected log(...args: unknown[]): void {
-    if (!this.logger) return;
+  private log(...args: unknown[]): void {
     if (!this.verboseLogging) return;
-
-    return this.logger.debug('[MQTT API] ->', ...args);
+    this.logger.debug('[MQTT]', ...args);
   }
 
-  subscribe(topic: string | string[]): mqtt.Client {
-    return this.mqttApiClient.subscribe(topic);
+  subscribe(topic: string | string[]): void {
+    this.client.subscribe(topic);
   }
 
-  publish(topic: string, message: string): mqtt.Client {
-    return this.mqttApiClient.publish(topic, message);
+  on(event: 'message', listener: (topic: string, payload: Buffer) => void): void {
+    this.client.on(event, listener);
   }
 
-  on(event: 'message', listener: mqtt.OnMessageCallback) {
-    this.mqttApiClient.on(event, listener);
+  isConnected(): boolean {
+    return this.client.connected;
   }
 
-  handleMqttConnect(packet: mqtt.IConnackPacket) {
-    this.log(`MQTT connect: ${JSON.stringify(packet)}`);
-  }
-
-  handleMqttError(error: Error) {
-    this.log(`MQTT error: ${JSON.stringify(error)}`);
+  end(): void {
+    this.client.end();
   }
 
   setSpeed(speed: number): void {
-    const speedPayload = JSON.stringify({
-      // A range between 0-254
-      speed: `${speed}`,
-    });
-
-    this.log(`Publish on ${MQTT_CMD_TOPIC}: ${speedPayload}`);
-
-    this.mqttApiClient.publish(MQTT_CMD_TOPIC, speedPayload);
+    const payload = JSON.stringify({ speed: `${speed}` });
+    this.log('CMD speed:', payload);
+    this.client.publish(MQTT_CMD_TOPIC, payload);
   }
 
-  setVirtualRemoteCommand(virtualRemoteCommand: VirtualRemoteCommand): void {
-    const vremotePayload = JSON.stringify({
-      vremote: `${virtualRemoteCommand}`,
-    });
+  setVirtualRemoteCommand(command: VirtualRemoteCommand): void {
+    const payload = JSON.stringify({ vremote: `${command}` });
+    this.log('CMD vremote:', payload);
+    this.client.publish(MQTT_CMD_TOPIC, payload);
+  }
 
-    this.log(`Publish on ${MQTT_CMD_TOPIC}: ${vremotePayload}`);
+  private handleConnect(packet: IConnackPacket): void {
+    this.log('Connected', JSON.stringify(packet));
+  }
 
-    this.mqttApiClient.publish(MQTT_CMD_TOPIC, vremotePayload);
+  private handleError(error: Error): void {
+    this.logger.error('[MQTT] Error:', error.message);
   }
 }
