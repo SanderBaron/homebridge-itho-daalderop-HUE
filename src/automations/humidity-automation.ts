@@ -3,17 +3,68 @@ import { HumidityAutomationState, SupportedVirtualRemoteCommands } from '@/types
 
 export interface HumidityAutomationConfig {
   enabled: boolean;
+  /** 'badkamer': absolute + rapid-rise + minimum timer. 'wasruimte': three-zone threshold. */
+  mode: 'badkamer' | 'wasruimte';
+  /** Absolute humidity level that triggers boost (%) */
   boostThreshold: number;
+  /** Humidity must be below this for the minimum timer to end the boost (%) */
   dropThreshold: number;
+  /** Minimum minutes to keep fan at high (applies to both quick and long showers) */
   cooldownMinutes: number;
+  /** Rapid-rise detection: trigger boost when humidity rises this many % within riseWindowSeconds (0 = disabled) */
+  riseRate: number;
+  /** Rapid-rise detection window (seconds) */
+  riseWindowSeconds: number;
+  /** Wasruimte only: below this humidity the fan is set to low (%) */
+  minSpeedThreshold: number;
 }
 
 export type SpeedChangeCallback = (speed: SupportedVirtualRemoteCommands | 'auto') => void;
 
+const HISTORY_MAX_MS = 120_000; // keep 2 minutes of history for rapid-rise detection
+
+/**
+ * Humidity-based fan automation for Itho Daalderop CVE.
+ *
+ * Badkamer state machine (two states: idle / boosting):
+ *
+ *   idle ──(absolute threshold OR rapid rise)──▶ boosting
+ *         sends 'high', starts minimum timer
+ *
+ *   boosting ──(timer elapsed AND hum < dropThreshold)──▶ idle
+ *              sends 'auto'
+ *
+ * The minimum timer prevents premature return to auto for quick showers.
+ * For long showers (hum stays high after the timer), the fan keeps running
+ * at high until humidity actually drops below dropThreshold.
+ *
+ * Rapid-rise triggered boosts at low absolute humidity (e.g. 48%) no longer
+ * cause boost→cooldown cycling, because the timer runs its full duration
+ * before checking the dropThreshold exit condition.
+ *
+ * Wasruimte: simple three-zone threshold, no timer.
+ */
 export class HumidityAutomation {
   private state: HumidityAutomationState = 'idle';
-  private cooldownTimer: ReturnType<typeof setTimeout> | null = null;
-  private cooldownEndsAt: number | null = null;
+
+  /** The minimum-hold timer. Restarted on each re-trigger. */
+  private minTimer: ReturnType<typeof setTimeout> | null = null;
+  private minTimerEndsAt: number | null = null;
+
+  /**
+   * True once the minimum timer has elapsed.
+   * In 'boosting': the fan returns to auto on the next update where hum < dropThreshold.
+   */
+  private minElapsed = false;
+
+  /** Last known humidity value — used by the timer callback. */
+  private lastHumidity: number | null = null;
+
+  /** Sliding window of (time, humidity) for rapid-rise detection. */
+  private history: Array<{ time: number; value: number }> = [];
+
+  /** Wasruimte: last issued command to suppress redundant MQTT messages. */
+  private lastWasruimteCmd: string | null = null;
 
   constructor(
     private readonly config: HumidityAutomationConfig,
@@ -21,70 +72,172 @@ export class HumidityAutomation {
     private readonly log: Logger,
   ) {}
 
+  // ── Public API ────────────────────────────────────────────────────────────
+
+  /** Called on every MQTT status update with the current humidity reading. */
   update(humidity: number): void {
+    this.lastHumidity = humidity;
+    this.recordHistory(humidity);
     if (!this.config.enabled) return;
 
-    if (humidity >= this.config.boostThreshold && this.state !== 'boost') {
-      this.startBoost(humidity);
-    } else if (humidity < this.config.dropThreshold && this.state === 'boost') {
-      this.startCooldown(humidity);
-    } else if (humidity >= this.config.boostThreshold && this.state === 'cooldown') {
-      // Humidity spiked again during cooldown — stay in boost
-      this.cancelCooldown();
-      this.startBoost(humidity);
+    if (this.config.mode === 'wasruimte') {
+      this.updateWasruimte(humidity);
+    } else {
+      this.updateBadkamer(humidity);
     }
   }
 
-  getState(): HumidityAutomationState {
-    return this.state;
-  }
+  getState(): HumidityAutomationState { return this.state; }
 
-  getCooldownEndsAt(): number | null {
-    return this.cooldownEndsAt;
-  }
+  /** Returns the timestamp (ms) when the minimum boost timer expires, or null. */
+  getMinTimerEndsAt(): number | null { return this.minTimerEndsAt; }
 
-  /** Cancel any active automation and reset to idle. */
+  /** @deprecated Use getMinTimerEndsAt() */
+  getCooldownEndsAt(): number | null { return this.getMinTimerEndsAt(); }
+
+  getLastHumidity(): number | null { return this.lastHumidity; }
+
+  /** Cancel any active automation (called on manual override). */
   cancel(): void {
-    this.cancelCooldown();
+    this.clearMinTimer();
     this.state = 'idle';
-    this.cooldownEndsAt = null;
+    this.lastWasruimteCmd = null;
   }
 
   destroy(): void {
-    this.cancelCooldown();
+    this.clearMinTimer();
   }
 
-  private startBoost(humidity: number): void {
-    this.cancelCooldown();
-    this.state = 'boost';
-    this.log.info(
-      `[Humidity Automation] ${humidity}% ≥ ${this.config.boostThreshold}% threshold — fan to high`,
-    );
+  // ── Badkamer mode ─────────────────────────────────────────────────────────
+
+  private updateBadkamer(hum: number): void {
+    const rapidRise = this.detectRapidRise(hum);
+
+    switch (this.state) {
+      case 'idle':
+        if (hum >= this.config.boostThreshold || rapidRise) {
+          this.startBoosting(hum, rapidRise);
+        }
+        break;
+
+      case 'boosting':
+        if (hum >= this.config.boostThreshold || rapidRise) {
+          // Hum still rising or re-triggering — restart the minimum timer so we don't
+          // exit too early. Only restart if it already elapsed (re-trigger after a break).
+          if (this.minElapsed) {
+            this.log.info(`[Humidity] Herstart boost: ${hum.toFixed(1)}% — minimale timer opnieuw gestart`);
+            this.startMinTimer();
+          }
+          // else: timer still running, nothing to do
+        } else if (this.minElapsed && hum < this.config.dropThreshold) {
+          // Minimum time has passed AND humidity is sufficiently low → back to auto
+          this.finishBoosting(hum);
+        }
+        // else: timer still running, or hum between dropThreshold and boostThreshold → keep waiting
+        break;
+    }
+  }
+
+  private startBoosting(hum: number, rapidRise: boolean): void {
+    this.clearMinTimer();
+    this.state = 'boosting';
+    const reason = rapidRise
+      ? `snelle stijging gedetecteerd`
+      : `${hum.toFixed(1)}% ≥ drempel ${this.config.boostThreshold}%`;
+    this.log.info(`[Humidity] Boost gestart (${reason}) — ventilator naar HIGH, minimaal ${this.config.cooldownMinutes} min`);
     this.onSpeedChange('high');
+    this.startMinTimer();
   }
 
-  private startCooldown(humidity: number): void {
-    if (this.cooldownTimer) return;
-    this.state = 'cooldown';
+  private startMinTimer(): void {
+    this.clearMinTimer();
+    this.minElapsed = false;
     const ms = this.config.cooldownMinutes * 60_000;
-    this.cooldownEndsAt = Date.now() + ms;
-    this.log.info(
-      `[Humidity Automation] ${humidity}% < ${this.config.dropThreshold}% — cooldown ${this.config.cooldownMinutes} min`,
-    );
-    this.cooldownTimer = setTimeout(() => {
-      this.cooldownTimer = null;
-      this.cooldownEndsAt = null;
-      this.state = 'idle';
-      this.log.info('[Humidity Automation] Cooldown complete — returning to auto');
-      this.onSpeedChange('auto');
+    this.minTimerEndsAt = Date.now() + ms;
+    this.minTimer = setTimeout(() => {
+      this.minTimer = null;
+      this.minTimerEndsAt = null;
+      this.minElapsed = true;
+      this.log.debug(
+        `[Humidity] Minimale boudsttijd verstreken — vochtigheid: ${this.lastHumidity?.toFixed(1)}%`,
+      );
+      // Check immediately with the last known humidity
+      if (this.state === 'boosting' && this.lastHumidity !== null && this.lastHumidity < this.config.dropThreshold) {
+        this.finishBoosting(this.lastHumidity);
+      }
+      // If still humid: the next update() call will call finishBoosting() when hum drops
     }, ms);
   }
 
-  private cancelCooldown(): void {
-    if (this.cooldownTimer) {
-      clearTimeout(this.cooldownTimer);
-      this.cooldownTimer = null;
-      this.cooldownEndsAt = null;
+  private finishBoosting(hum: number): void {
+    this.clearMinTimer();
+    this.state = 'idle';
+    this.log.info(`[Humidity] Boost afgerond — ${hum.toFixed(1)}% < ${this.config.dropThreshold}% — terug naar automatisch`);
+    this.onSpeedChange('auto');
+  }
+
+  private clearMinTimer(): void {
+    if (this.minTimer) {
+      clearTimeout(this.minTimer);
+      this.minTimer = null;
+      this.minTimerEndsAt = null;
     }
+    this.minElapsed = false;
+  }
+
+  // ── Wasruimte mode ────────────────────────────────────────────────────────
+
+  /**
+   * Three-zone logic per Itho spec:
+   *   hum < minSpeedThreshold  → low
+   *   minSpeedThreshold ≤ hum < boostThreshold → auto (medium)
+   *   hum ≥ boostThreshold     → high
+   */
+  private updateWasruimte(hum: number): void {
+    let cmd: string;
+    if (hum >= this.config.boostThreshold) {
+      cmd = 'high';
+    } else if (hum < this.config.minSpeedThreshold) {
+      cmd = 'low';
+    } else {
+      cmd = 'auto';
+    }
+
+    if (cmd !== this.lastWasruimteCmd) {
+      this.lastWasruimteCmd = cmd;
+      this.log.info(
+        `[Humidity] Wasruimte: ${hum.toFixed(1)}% → ${cmd} ` +
+        `(laag <${this.config.minSpeedThreshold}%, hoog ≥${this.config.boostThreshold}%)`,
+      );
+      this.onSpeedChange(cmd as SupportedVirtualRemoteCommands | 'auto');
+    }
+  }
+
+  // ── Rapid-rise detection ──────────────────────────────────────────────────
+
+  private recordHistory(hum: number): void {
+    const now = Date.now();
+    this.history.push({ time: now, value: hum });
+    const cutoff = now - HISTORY_MAX_MS;
+    while (this.history.length > 1 && this.history[0].time < cutoff) {
+      this.history.shift();
+    }
+  }
+
+  private detectRapidRise(currentHum: number): boolean {
+    if (this.config.riseRate <= 0 || this.config.riseWindowSeconds <= 0) return false;
+    const windowMs = this.config.riseWindowSeconds * 1000;
+    const cutoff = Date.now() - windowMs;
+    const inWindow = this.history.filter(e => e.time >= cutoff);
+    if (inWindow.length === 0) return false;
+    const rise = currentHum - inWindow[0].value;
+    if (rise >= this.config.riseRate) {
+      this.log.debug(
+        `[Humidity] Snelle stijging: +${rise.toFixed(1)}% in ${this.config.riseWindowSeconds}s ` +
+        `(drempel: ${this.config.riseRate}%)`,
+      );
+      return true;
+    }
+    return false;
   }
 }

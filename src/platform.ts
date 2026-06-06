@@ -15,6 +15,10 @@ import {
   DEFAULT_HUMIDITY_BOOST_THRESHOLD,
   DEFAULT_HUMIDITY_COOLDOWN_MINUTES,
   DEFAULT_HUMIDITY_DROP_THRESHOLD,
+  DEFAULT_HUMIDITY_MIN_SPEED_THRESHOLD,
+  DEFAULT_HUMIDITY_MODE,
+  DEFAULT_HUMIDITY_RISE_RATE,
+  DEFAULT_HUMIDITY_RISE_WINDOW_SECONDS,
   DEFAULT_MANUAL_OVERRIDE_MINUTES,
   MQTT_STATE_TOPIC,
   MQTT_STATUS_TOPIC,
@@ -131,10 +135,14 @@ export class HomebridgeIthoDaalderop implements DynamicPlatformPlugin {
 
     this.humidityAutomation = new HumidityAutomation(
       {
-        enabled: humCfg?.enabled !== false,
-        boostThreshold: humCfg?.boostThreshold ?? DEFAULT_HUMIDITY_BOOST_THRESHOLD,
-        dropThreshold: humCfg?.dropThreshold ?? DEFAULT_HUMIDITY_DROP_THRESHOLD,
-        cooldownMinutes: humCfg?.cooldownMinutes ?? DEFAULT_HUMIDITY_COOLDOWN_MINUTES,
+        enabled:             humCfg?.enabled !== false,
+        mode:                humCfg?.mode               ?? DEFAULT_HUMIDITY_MODE,
+        boostThreshold:      humCfg?.boostThreshold     ?? DEFAULT_HUMIDITY_BOOST_THRESHOLD,
+        dropThreshold:       humCfg?.dropThreshold      ?? DEFAULT_HUMIDITY_DROP_THRESHOLD,
+        cooldownMinutes:     humCfg?.cooldownMinutes     ?? DEFAULT_HUMIDITY_COOLDOWN_MINUTES,
+        riseRate:            humCfg?.riseRate            ?? DEFAULT_HUMIDITY_RISE_RATE,
+        riseWindowSeconds:   humCfg?.riseWindowSeconds   ?? DEFAULT_HUMIDITY_RISE_WINDOW_SECONDS,
+        minSpeedThreshold:   humCfg?.minSpeedThreshold   ?? DEFAULT_HUMIDITY_MIN_SPEED_THRESHOLD,
       },
       this.handleAutomationSpeedChange.bind(this),
       this.log,
@@ -267,7 +275,7 @@ export class HomebridgeIthoDaalderop implements DynamicPlatformPlugin {
 
   private handleScheduleSpeedChange(speed: SupportedVirtualRemoteCommands | null): void {
     if (this.isManualOverrideActive()) return;
-    if (this.humidityAutomation?.getState() === 'boost') return; // humidity has priority
+    if (this.humidityAutomation?.getState() === 'boosting') return; // humidity has priority
 
     this.sendVirtualRemoteCommand(speed ?? 'medium');
   }

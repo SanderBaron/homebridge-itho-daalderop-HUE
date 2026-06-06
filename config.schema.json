@@ -75,15 +75,47 @@
           },
           "username": {
             "type": "string",
-            "title": "Username",
+            "title": "MQTT gebruikersnaam",
             "required": false,
-            "placeholder": "Optional"
+            "placeholder": "Optioneel"
           },
           "password": {
             "type": "string",
-            "title": "Password",
+            "title": "MQTT wachtwoord",
             "required": false,
-            "placeholder": "Optional"
+            "placeholder": "Optioneel"
+          },
+          "deviceUsername": {
+            "type": "string",
+            "title": "NRGWatch gebruikersnaam",
+            "required": false,
+            "placeholder": "Optioneel",
+            "description": "Inloggegevens voor de NRGWatch webinterface (alleen invullen als authenticatie is ingeschakeld op het apparaat)."
+          },
+          "devicePassword": {
+            "type": "string",
+            "title": "NRGWatch wachtwoord",
+            "required": false,
+            "placeholder": "Optioneel"
+          }
+        }
+      },
+
+      "hue": {
+        "type": "object",
+        "properties": {
+          "bridgeIp": {
+            "type": "string",
+            "title": "Hue Bridge IP-adres",
+            "format": "ipv4",
+            "placeholder": "192.168.1.16",
+            "description": "IP-adres van de Philips Hue Bridge (Phase 2)."
+          },
+          "apiKey": {
+            "type": "string",
+            "title": "Hue API sleutel",
+            "placeholder": "xxxxxxxxxxxxxxxxxx",
+            "description": "API-sleutel voor de Hue Bridge. Te vinden via de Hue API of Homebridge Hue-plugin."
           }
         }
       },
@@ -108,37 +140,129 @@
             "type": "object",
             "properties": {
               "enabled": {
-                "title": "Enable humidity automation",
+                "title": "Vochtigheidsautomaat inschakelen",
                 "type": "boolean",
                 "default": true
               },
+              "mode": {
+                "title": "Sensormodus",
+                "type": "string",
+                "default": "badkamer",
+                "oneOf": [
+                  { "title": "Badkamer (absolute + snelle stijging + cooldown)", "enum": ["badkamer"] },
+                  { "title": "Wasruimte (drie drempelzones, geen cooldown)", "enum": ["wasruimte"] }
+                ]
+              },
               "boostThreshold": {
-                "title": "Boost trigger (%)",
+                "title": "Absolute drempel (%)",
                 "type": "number",
-                "default": 70,
+                "default": 85,
                 "minimum": 50,
-                "maximum": 95
+                "maximum": 100,
+                "description": "Ventilator naar HIGH zodra deze waarde bereikt wordt. Itho spec: 85% badkamer, 90% wasruimte."
               },
               "dropThreshold": {
-                "title": "Drop threshold (%)",
+                "title": "Terugkeerdrempel (%)",
                 "type": "number",
-                "default": 60,
+                "default": 82,
                 "minimum": 40,
-                "maximum": 85
+                "maximum": 95,
+                "description": "Cooldown-timer mag pas eindigen als vochtigheid onder deze waarde ligt. Itho spec: 82% badkamer."
               },
               "cooldownMinutes": {
-                "title": "Cooldown timer (min)",
+                "title": "Minimale cooldown (min)",
                 "type": "number",
                 "default": 20,
                 "minimum": 1,
-                "maximum": 120
+                "maximum": 120,
+                "description": "Minimale tijd dat de ventilator op HIGH blijft nadat de vochtigheid daalt. Langer douchen? Geen probleem — ventilator blijft aan tot de vochtigheid echt gezakt is."
+              },
+              "riseRate": {
+                "title": "Snelle stijging drempel (%)",
+                "type": "number",
+                "default": 3,
+                "minimum": 0,
+                "maximum": 20,
+                "description": "Boost triggert ook bij een stijging van dit % binnen het detectievenster. Stel in op 0 om uit te schakelen. Itho spec: 3%."
+              },
+              "riseWindowSeconds": {
+                "title": "Detectievenster (seconden)",
+                "type": "number",
+                "default": 24,
+                "minimum": 5,
+                "maximum": 120,
+                "description": "Tijdvenster voor snelle stijging. Itho spec: 24 of 48 seconden."
+              },
+              "minSpeedThreshold": {
+                "title": "Minimum-stand drempel (%, alleen wasruimte)",
+                "type": "number",
+                "default": 75,
+                "minimum": 40,
+                "maximum": 85,
+                "description": "Alleen wasruimte-modus: onder deze waarde gaat de ventilator naar de minimumstand."
               },
               "manualOverrideMinutes": {
-                "title": "Manual override duration (min)",
+                "title": "Override-pauze na handmatige bediening (min)",
                 "type": "number",
                 "default": 60,
                 "minimum": 0,
                 "maximum": 240
+              }
+            }
+          },
+          "mirrorHeater": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "title": "Spiegelverwarming inschakelen",
+                "type": "boolean",
+                "default": false
+              },
+              "hueLightId": {
+                "title": "Hue lamp-ID (spiegel)",
+                "type": "string",
+                "placeholder": "bijv. 5 of een UUID",
+                "description": "ID van de Hue-lamp die de spiegelverwarming aanstuurt."
+              },
+              "durationMinutes": {
+                "title": "Brandtijd spiegel (min)",
+                "type": "number",
+                "default": 30,
+                "minimum": 1,
+                "maximum": 120,
+                "description": "Hoelang de spiegelverwarming aan blijft nadat de vochtigheid daalt."
+              }
+            }
+          },
+          "toiletLight": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "title": "Toilet-detectie inschakelen",
+                "type": "boolean",
+                "default": false
+              },
+              "hueSensorId": {
+                "title": "Hue sensor/knop ID (toilet)",
+                "type": "string",
+                "placeholder": "bijv. 12 of een UUID",
+                "description": "ID van de Hue-schakelaar of -sensor die het toiletlicht detecteert."
+              },
+              "minOnMinutes": {
+                "title": "Minimale brandduur licht (min)",
+                "type": "number",
+                "default": 2,
+                "minimum": 1,
+                "maximum": 30,
+                "description": "Het licht moet minimaal zo lang aan zijn geweest om de CVE-boost te activeren."
+              },
+              "boostMinutes": {
+                "title": "CVE boost-duur (min)",
+                "type": "number",
+                "default": 20,
+                "minimum": 1,
+                "maximum": 120,
+                "description": "Hoelang de CVE op maximale stand draait na detectie."
               }
             }
           },
@@ -245,9 +369,23 @@
           "type": "flex",
           "flex-flow": "row wrap",
           "items": [
-            { "key": "api.deviceIp" },
+            { "key": "api.deviceIp" }
+          ]
+        },
+        {
+          "type": "flex",
+          "flex-flow": "row wrap",
+          "items": [
             { "key": "api.username" },
             { "key": "api.password" }
+          ]
+        },
+        {
+          "type": "flex",
+          "flex-flow": "row wrap",
+          "items": [
+            { "key": "api.deviceUsername" },
+            { "key": "api.devicePassword" }
           ]
         },
         { "key": "verboseLogging" }
@@ -294,8 +432,8 @@
 
     {
       "type": "fieldset",
-      "title": "Schedule overrides",
-      "description": "Override fan speed during specific time windows — e.g. morning airing or cooking hours. Humidity automation takes priority over the schedule.",
+      "title": "Tijdschema-overrides",
+      "description": "Overschrijf de ventilatorstand tijdens bepaalde tijdvensters — bijv. 's ochtends luchten. De vochtigheidsautomaat heeft hogere prioriteit dan het schema.",
       "expandable": true,
       "expanded": false,
       "items": [
@@ -318,10 +456,67 @@
               "key": "automation.schedule.entries[].days",
               "type": "checkboxes",
               "titleMap": {
-                "mon": "Mon", "tue": "Tue", "wed": "Wed", "thu": "Thu",
-                "fri": "Fri", "sat": "Sat", "sun": "Sun"
+                "mon": "Ma", "tue": "Di", "wed": "Wo", "thu": "Do",
+                "fri": "Vr", "sat": "Za", "sun": "Zo"
               }
             }
+          ]
+        }
+      ]
+    },
+
+    {
+      "type": "fieldset",
+      "title": "Philips Hue (Phase 2)",
+      "description": "Koppeling met Philips Hue Bridge voor spiegelverwarming en toilet-detectie. Hardware nog niet vereist — vul alvast in als je de Hue Bridge al hebt.",
+      "expandable": true,
+      "expanded": false,
+      "items": [
+        {
+          "type": "flex",
+          "flex-flow": "row wrap",
+          "items": [
+            { "key": "hue.bridgeIp" },
+            { "key": "hue.apiKey" }
+          ]
+        }
+      ]
+    },
+
+    {
+      "type": "fieldset",
+      "title": "Spiegelverwarming (Phase 2 — Hue)",
+      "description": "Stuurt een Hue-lamp (spiegelverwarming) aan op basis van de vochtigheid in de badkamer. Vereist Hue Bridge-koppeling hierboven.",
+      "expandable": true,
+      "expanded": false,
+      "items": [
+        { "key": "automation.mirrorHeater.enabled" },
+        {
+          "type": "flex",
+          "flex-flow": "row wrap",
+          "items": [
+            { "key": "automation.mirrorHeater.hueLightId" },
+            { "key": "automation.mirrorHeater.durationMinutes" }
+          ]
+        }
+      ]
+    },
+
+    {
+      "type": "fieldset",
+      "title": "Toilet-ventilatie (Phase 2 — Hue)",
+      "description": "Detecteert het toiletlicht via een Hue-schakelaar of -sensor en stuurt de CVE aan. Als het licht langer aan is dan de drempel, gaat de ventilator op maximum.",
+      "expandable": true,
+      "expanded": false,
+      "items": [
+        { "key": "automation.toiletLight.enabled" },
+        {
+          "type": "flex",
+          "flex-flow": "row wrap",
+          "items": [
+            { "key": "automation.toiletLight.hueSensorId" },
+            { "key": "automation.toiletLight.minOnMinutes" },
+            { "key": "automation.toiletLight.boostMinutes" }
           ]
         }
       ]

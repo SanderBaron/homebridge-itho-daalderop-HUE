@@ -33,21 +33,44 @@ export const configSchema = z.object({
     protocol: z.enum(['mqtt', 'http']),
     ip: ipv4Schema('IP address is required for setup'),
     port: z.number({ required_error: 'Port is required for setup' }),
+    /** MQTT broker credentials */
     username: z.string().optional(),
     password: z.string().optional(),
-    // Optional: direct Itho device IP for the dashboard when protocol is 'mqtt'
+    /** Optional: direct Itho device IP for the dashboard when protocol is 'mqtt' */
     deviceIp: ipv4Schema('deviceIp must be a valid IPv4 address').optional(),
+    /** NRGWatch HTTP API credentials (if auth is enabled on the device) */
+    deviceUsername: z.string().optional(),
+    devicePassword: z.string().optional(),
   }),
+
+  /** Philips Hue integration (Phase 2) */
+  hue: z
+    .object({
+      bridgeIp: ipv4Schema('Hue bridge IP must be a valid IPv4 address').optional(),
+      apiKey: z.string().optional(),
+    })
+    .optional(),
 
   automation: z
     .object({
       humidity: z
         .object({
           enabled: z.boolean().default(true),
-          boostThreshold: z.number().min(50).max(95).default(70),
-          dropThreshold: z.number().min(40).max(85).default(60),
+          /** 'badkamer': absolute + rapid-rise + cooldown. 'wasruimte': three-zone thresholds. */
+          mode: z.enum(['badkamer', 'wasruimte']).default('badkamer'),
+          /** Absolute humidity level that immediately triggers boost (%) */
+          boostThreshold: z.number().min(50).max(100).default(85),
+          /** Humidity must drop below this before cooldown can finish (%) */
+          dropThreshold: z.number().min(40).max(95).default(82),
+          /** Minimum minutes to keep fan at high after humidity drops */
           cooldownMinutes: z.number().min(1).max(120).default(20),
           manualOverrideMinutes: z.number().min(0).max(240).default(60),
+          /** Rapid-rise detection: boost when humidity rises this many % within riseWindowSeconds (0 = disabled) */
+          riseRate: z.number().min(0).max(20).default(3),
+          /** Rapid-rise detection window in seconds (Itho spec: 24 or 48) */
+          riseWindowSeconds: z.number().min(5).max(120).default(24),
+          /** Wasruimte only: below this humidity the fan is set to low (%) */
+          minSpeedThreshold: z.number().min(40).max(85).default(75),
         })
         .optional(),
       turbo: z
@@ -69,6 +92,30 @@ export const configSchema = z.object({
               }),
             )
             .default([]),
+        })
+        .optional(),
+
+      /** Phase 2: mirror heater control via external humidity sensor + Hue */
+      mirrorHeater: z
+        .object({
+          enabled: z.boolean().default(false),
+          /** Hue light resource ID for the mirror heater */
+          hueLightId: z.string().optional(),
+          /** Minutes to keep the mirror heater on after humidity drops */
+          durationMinutes: z.number().min(1).max(120).default(30),
+        })
+        .optional(),
+
+      /** Phase 2: toilet ventilation boost via Hue button/sensor */
+      toiletLight: z
+        .object({
+          enabled: z.boolean().default(false),
+          /** Hue sensor/button resource ID to detect toilet light */
+          hueSensorId: z.string().optional(),
+          /** Minimum minutes the light must be on to trigger a boost */
+          minOnMinutes: z.number().min(1).max(30).default(2),
+          /** Minutes to run CVE at high speed after trigger */
+          boostMinutes: z.number().min(1).max(120).default(20),
         })
         .optional(),
     })

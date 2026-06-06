@@ -102,7 +102,8 @@ export interface ScheduleEntry {
 
 // --- Automation state ---
 
-export type HumidityAutomationState = 'idle' | 'boost' | 'cooldown';
+/** 'boosting' covers both the active boost and the post-shower minimum hold. */
+export type HumidityAutomationState = 'idle' | 'boosting';
 export type AutomationSource = 'manual' | 'humidity' | 'schedule' | 'auto';
 
 export interface AutomationStatus {
