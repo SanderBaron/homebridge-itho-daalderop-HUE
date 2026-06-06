@@ -89,8 +89,11 @@ export class FanAccessory {
       this.accessory.getServiceById(this.platform.Service.Switch, 'turbo') ||
       this.accessory.addService(this.platform.Service.Switch, turboLabel, 'turbo');
 
-    // Always sync name in case the duration setting changed since last start
+    // Set both Name and ConfiguredName so HomeKit shows the correct label.
+    // ConfiguredName is what the Home app actually displays — without it HomeKit
+    // defaults to the accessory name ("Mechanical Ventilation") for all sub-services.
     this.turboService.setCharacteristic(this.platform.Characteristic.Name, turboLabel);
+    this.turboService.updateCharacteristic(this.platform.Characteristic.ConfiguredName, turboLabel);
     this.turboService.setCharacteristic(this.platform.Characteristic.On, false);
 
     this.turboService
