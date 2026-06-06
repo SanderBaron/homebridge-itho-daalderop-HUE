@@ -91,7 +91,50 @@ describe('FanAccessory', () => {
     });
   });
 
-  // Turbo logic is now in TurboAccessory — tested separately
+  describe('Turbo switch', () => {
+    it('handleGetTurbo returns false when no timer active', () => {
+      const fa = new FanAccessory(platformMock, accessoryMock, configMock);
+      expect(fa.handleGetTurbo()).toBe(false);
+    });
+
+    it('ON: sends high and starts timer', () => {
+      vi.useFakeTimers();
+      const fa = new FanAccessory(platformMock, accessoryMock, configMock);
+      const spy = platformMock.sendVirtualRemoteCommand as ReturnType<typeof vi.fn>;
+      spy.mockClear();
+      fa.handleSetTurbo(true);
+      expect(spy).toHaveBeenCalledWith('high');
+      expect(fa['turboTimer']).not.toBeNull();
+      vi.useRealTimers();
+    });
+
+    it('OFF: sends medium and clears timer', () => {
+      vi.useFakeTimers();
+      const fa = new FanAccessory(platformMock, accessoryMock, configMock);
+      fa.handleSetTurbo(true);
+      const spy = platformMock.sendVirtualRemoteCommand as ReturnType<typeof vi.fn>;
+      spy.mockClear();
+      fa.handleSetTurbo(false);
+      expect(spy).toHaveBeenCalledWith('medium');
+      expect(fa['turboTimer']).toBeNull();
+      vi.useRealTimers();
+    });
+
+    it('auto-reverts after durationMinutes', () => {
+      vi.useFakeTimers();
+      const fa = new FanAccessory(platformMock, accessoryMock, {
+        ...configMock,
+        automation: { turbo: { durationMinutes: 1 } },
+      });
+      const spy = platformMock.sendVirtualRemoteCommand as ReturnType<typeof vi.fn>;
+      fa.handleSetTurbo(true);
+      spy.mockClear();
+      vi.advanceTimersByTime(61_000);
+      expect(spy).toHaveBeenCalledWith('medium');
+      expect(fa['turboTimer']).toBeNull();
+      vi.useRealTimers();
+    });
+  });
 
   describe('handleGetRotationSpeed()', () => {
     it('returns Speed status when available', () => {

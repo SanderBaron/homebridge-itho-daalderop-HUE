@@ -15,7 +15,6 @@ import { serialNumberFromUUID } from './utils/serial';
 import { PLUGIN_VERSION } from './version';
 
 const DEFAULT_TURBO_MINUTES = 20;
-const COUNTDOWN_INTERVAL_MS = 10_000;
 
 export class FanAccessory {
   private fanService: Service;
@@ -26,8 +25,6 @@ export class FanAccessory {
   private lastStatePayload: number | null = null;
 
   private turboTimer: ReturnType<typeof setTimeout> | null = null;
-  private turboCountdownInterval: ReturnType<typeof setInterval> | null = null;
-  private turboEndsAt: number | null = null;
 
   readonly turboMinutes: number;
 
@@ -56,8 +53,8 @@ export class FanAccessory {
     );
 
     // ---- Remove stale services from previous versions ----
-    const oldSwitch = this.accessory.getService(this.platform.Service.Switch);
-    if (oldSwitch) this.accessory.removeService(oldSwitch);
+    const oldValve = this.accessory.getServiceById(this.platform.Service.Valve, 'turbo');
+    if (oldValve) this.accessory.removeService(oldValve);
 
     // ---- Fan service (read-only status display) ----
     this.fanService =
@@ -85,36 +82,21 @@ export class FanAccessory {
       .getCharacteristic(this.platform.Characteristic.CurrentFanState)
       .onGet(this.handleGetCurrentFanState.bind(this));
 
-    // ---- Turbo — Valve sub-service with countdown ----
-    // Valve is the only HomeKit service with built-in countdown (RemainingDuration).
-    // It sits on the same accessory as the fan so they share one tile.
-    // Name includes the configured duration so it reads "Turbo (20 min)".
+    // ---- Turbo — Switch sub-service ----
+    // Simple on/off switch. Name shows the configured duration: "Turbo (20 min)".
+    // HomeKit will show this label on the button. Auto-reverts after durationMinutes.
     this.turboService =
-      this.accessory.getServiceById(this.platform.Service.Valve, 'turbo') ||
-      this.accessory.addService(this.platform.Service.Valve, turboLabel, 'turbo');
+      this.accessory.getServiceById(this.platform.Service.Switch, 'turbo') ||
+      this.accessory.addService(this.platform.Service.Switch, turboLabel, 'turbo');
 
-    // Always update the name in case the duration setting changed
+    // Always sync name in case the duration setting changed since last start
     this.turboService.setCharacteristic(this.platform.Characteristic.Name, turboLabel);
-    this.turboService.setCharacteristic(
-      this.platform.Characteristic.ValveType,
-      this.platform.Characteristic.ValveType.GENERIC_VALVE,
-    );
-    this.turboService.setCharacteristic(this.platform.Characteristic.Active, 0);
-    this.turboService.setCharacteristic(this.platform.Characteristic.InUse, 0);
-    this.turboService.setCharacteristic(
-      this.platform.Characteristic.SetDuration,
-      this.turboMinutes * 60,
-    );
-    this.turboService.setCharacteristic(this.platform.Characteristic.RemainingDuration, 0);
+    this.turboService.setCharacteristic(this.platform.Characteristic.On, false);
 
     this.turboService
-      .getCharacteristic(this.platform.Characteristic.Active)
-      .onSet(this.handleSetTurboActive.bind(this))
-      .onGet(this.handleGetTurboActive.bind(this));
-
-    this.turboService
-      .getCharacteristic(this.platform.Characteristic.RemainingDuration)
-      .onGet(this.handleGetRemainingDuration.bind(this));
+      .getCharacteristic(this.platform.Characteristic.On)
+      .onSet(this.handleSetTurbo.bind(this))
+      .onGet(this.handleGetTurbo.bind(this));
   }
 
   get log() {
@@ -162,21 +144,16 @@ export class FanAccessory {
 
   // ---- Turbo handlers ----------------------------------------------------
 
-  handleSetTurboActive(value: CharacteristicValue): void {
-    if ((value as number) === 1) {
+  handleSetTurbo(value: CharacteristicValue): void {
+    if (value as boolean) {
       this.startTurbo();
     } else {
       this.stopTurbo();
     }
   }
 
-  handleGetTurboActive(): CharacteristicValue {
-    return this.turboTimer !== null ? 1 : 0;
-  }
-
-  handleGetRemainingDuration(): CharacteristicValue {
-    if (!this.turboEndsAt) return 0;
-    return Math.max(0, Math.round((this.turboEndsAt - Date.now()) / 1000));
+  handleGetTurbo(): CharacteristicValue {
+    return this.turboTimer !== null;
   }
 
   // ---- Fan display handlers (read-only) ----------------------------------
@@ -201,30 +178,10 @@ export class FanAccessory {
 
   private startTurbo(): void {
     this.cancelTurbo();
-
-    const durationSeconds = this.turboMinutes * 60;
-    this.turboEndsAt = Date.now() + durationSeconds * 1000;
-
-    this.turboService.updateCharacteristic(this.platform.Characteristic.Active, 1);
-    this.turboService.updateCharacteristic(this.platform.Characteristic.InUse, 1);
-    this.turboService.updateCharacteristic(
-      this.platform.Characteristic.RemainingDuration,
-      durationSeconds,
-    );
-
     this.platform.sendVirtualRemoteCommand('high');
     this.platform.notifyManualOverride();
     this.log.info(`Turbo ON → high for ${this.turboMinutes} min`);
-
-    this.turboCountdownInterval = setInterval(() => {
-      const remaining = this.handleGetRemainingDuration() as number;
-      this.turboService.updateCharacteristic(
-        this.platform.Characteristic.RemainingDuration,
-        remaining,
-      );
-    }, COUNTDOWN_INTERVAL_MS);
-
-    this.turboTimer = setTimeout(() => this.stopTurbo(), durationSeconds * 1000);
+    this.turboTimer = setTimeout(() => this.stopTurbo(), this.turboMinutes * 60_000);
   }
 
   private stopTurbo(): void {
@@ -236,11 +193,7 @@ export class FanAccessory {
 
   private cancelTurbo(): void {
     if (this.turboTimer) { clearTimeout(this.turboTimer); this.turboTimer = null; }
-    if (this.turboCountdownInterval) { clearInterval(this.turboCountdownInterval); this.turboCountdownInterval = null; }
-    this.turboEndsAt = null;
-    this.turboService.updateCharacteristic(this.platform.Characteristic.Active, 0);
-    this.turboService.updateCharacteristic(this.platform.Characteristic.InUse, 0);
-    this.turboService.updateCharacteristic(this.platform.Characteristic.RemainingDuration, 0);
+    this.turboService.updateCharacteristic(this.platform.Characteristic.On, false);
   }
 
   private speedToFanState(speed: number): number {
