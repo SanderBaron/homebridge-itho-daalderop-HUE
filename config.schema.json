@@ -91,6 +91,19 @@
       "automation": {
         "type": "object",
         "properties": {
+          "turbo": {
+            "type": "object",
+            "properties": {
+              "durationMinutes": {
+                "title": "Turbo duration (min)",
+                "type": "number",
+                "default": 20,
+                "minimum": 1,
+                "maximum": 120,
+                "description": "How many minutes the Turbo switch runs at high speed before automatically returning to auto mode."
+              }
+            }
+          },
           "humidity": {
             "type": "object",
             "properties": {
@@ -238,6 +251,17 @@
           ]
         },
         { "key": "verboseLogging" }
+      ]
+    },
+
+    {
+      "type": "fieldset",
+      "title": "Turbo mode",
+      "description": "The Turbo switch in HomeKit runs the fan at full speed for a set time, then automatically returns to auto mode.",
+      "expandable": true,
+      "expanded": true,
+      "items": [
+        { "key": "automation.turbo.durationMinutes" }
       ]
     },
 

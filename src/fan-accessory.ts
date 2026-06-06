@@ -4,47 +4,43 @@ import { HomebridgeIthoDaalderop } from '@/platform';
 import { IthoDaalderopAccessoryContext, IthoStatusSanitizedPayload } from './types';
 import {
   ACTIVE_SPEED_THRESHOLD,
-  ACTUAL_MODE_KEY,
   DEFAULT_FAN_NAME,
   FAN_INFO_KEY,
   MANUFACTURER,
-  MAX_ROTATION_SPEED,
   REQ_FAN_SPEED_KEY,
   SPEED_STATUS_KEY,
 } from './settings';
-import {
-  getRotationSpeedFromActualMode,
-  getVirtualRemoteCommandForRotationSpeed,
-} from './utils/api';
 import { ConfigSchema } from './config.schema';
-import { isNil } from './utils/lang';
 import { serialNumberFromUUID } from './utils/serial';
 import { PLUGIN_VERSION } from './version';
 
+const DEFAULT_TURBO_MINUTES = 20;
+
 export class FanAccessory {
-  private service: Service;
+  private fanService: Service;
+  private turboService: Service;
   private informationService: Service | undefined;
+
   private lastStatusPayload: IthoStatusSanitizedPayload | null = null;
   private lastStatePayload: number | null = null;
+  private turboTimer: ReturnType<typeof setTimeout> | null = null;
+
+  private readonly turboMinutes: number;
 
   constructor(
     private readonly platform: HomebridgeIthoDaalderop,
     private readonly accessory: PlatformAccessory<IthoDaalderopAccessoryContext>,
     private readonly config: ConfigSchema,
   ) {
+    this.turboMinutes = config.automation?.turbo?.durationMinutes ?? DEFAULT_TURBO_MINUTES;
+
     this.log.debug('Initializing fan accessory');
 
+    // ---- Accessory information ----
     const infoService = this.accessory.getService(this.platform.Service.AccessoryInformation);
     this.informationService = infoService;
-
-    this.informationService?.setCharacteristic(
-      this.platform.Characteristic.Manufacturer,
-      MANUFACTURER,
-    );
-    this.informationService?.setCharacteristic(
-      this.platform.Characteristic.Model,
-      DEFAULT_FAN_NAME,
-    );
+    this.informationService?.setCharacteristic(this.platform.Characteristic.Manufacturer, MANUFACTURER);
+    this.informationService?.setCharacteristic(this.platform.Characteristic.Model, DEFAULT_FAN_NAME);
     this.informationService?.setCharacteristic(
       this.platform.Characteristic.SerialNumber,
       serialNumberFromUUID(this.accessory.UUID),
@@ -54,36 +50,39 @@ export class FanAccessory {
       PLUGIN_VERSION || '2.0',
     );
 
-    this.service =
+    // ---- Fan service (read-only status display) ----
+    this.fanService =
       this.accessory.getService(this.platform.Service.Fanv2) ||
-      this.accessory.addService(this.platform.Service.Fanv2);
+      this.accessory.addService(this.platform.Service.Fanv2, DEFAULT_FAN_NAME);
 
-    this.service.setCharacteristic(this.platform.Characteristic.Name, accessory.displayName);
-    this.service.setCharacteristic(
+    this.fanService.setCharacteristic(this.platform.Characteristic.Name, accessory.displayName);
+    this.fanService.setCharacteristic(
       this.platform.Characteristic.Active,
       this.platform.Characteristic.Active.ACTIVE,
     );
 
-    this.service
-      .getCharacteristic(this.platform.Characteristic.Active)
-      .onSet(this.handleSetActive.bind(this))
-      .onGet(this.handleGetActive.bind(this));
-
-    this.service
+    // Speed is read-only — shows the actual measured fan speed from MQTT
+    this.fanService
       .getCharacteristic(this.platform.Characteristic.RotationSpeed)
       .setProps({ minValue: 0, maxValue: 100, minStep: 1 })
-      .onSet(this.handleSetRotationSpeed.bind(this))
       .onGet(this.handleGetRotationSpeed.bind(this));
 
-    this.service
+    this.fanService
       .getCharacteristic(this.platform.Characteristic.CurrentFanState)
       .onGet(this.handleGetCurrentFanState.bind(this));
 
-    // TargetFanState: AUTO lets the CO2 sensor take control, MANUAL keeps the set speed
-    this.service
-      .getCharacteristic(this.platform.Characteristic.TargetFanState)
-      .onSet(this.handleSetTargetFanState.bind(this))
-      .onGet(this.handleGetTargetFanState.bind(this));
+    // ---- Turbo switch ----
+    this.turboService =
+      this.accessory.getService(this.platform.Service.Switch) ||
+      this.accessory.addService(this.platform.Service.Switch, 'Turbo');
+
+    this.turboService.setCharacteristic(this.platform.Characteristic.Name, 'Turbo');
+    this.turboService.setCharacteristic(this.platform.Characteristic.On, false);
+
+    this.turboService
+      .getCharacteristic(this.platform.Characteristic.On)
+      .onSet(this.handleSetTurbo.bind(this))
+      .onGet(this.handleGetTurbo.bind(this));
   }
 
   get log() {
@@ -102,141 +101,96 @@ export class FanAccessory {
     };
   }
 
-  get allowsManualSpeedControl(): boolean {
-    // CO2 sensor and non-CVE devices require virtual remote commands, not raw 0–254 speed
-    // https://github.com/arjenhiemstra/ithowifi/wiki/CO2-sensors
-    return !this.config.device?.co2Sensor && !this.config.device?.nonCve;
-  }
+  // ---- Called by platform on MQTT updates --------------------------------
 
-  // Called by platform when MQTT status arrives
   handleStatusResponse(payload: IthoStatusSanitizedPayload): void {
     this.lastStatusPayload = payload;
     const speed = (payload[SPEED_STATUS_KEY] ?? payload[REQ_FAN_SPEED_KEY] ?? 0) as number;
 
-    this.updateCurrentFanState(speed);
-
-    // Keep slider in sync with actual measured speed
-    this.service.updateCharacteristic(
+    // Update fan display
+    this.fanService.updateCharacteristic(
       this.platform.Characteristic.RotationSpeed,
       Math.round(speed),
     );
-
-    // Keep TargetFanState in sync with FanInfo
-    const fanInfo = payload[FAN_INFO_KEY];
-    const isAuto = !fanInfo || fanInfo === 'auto';
-    this.service.updateCharacteristic(
-      this.platform.Characteristic.TargetFanState,
-      isAuto
-        ? this.platform.Characteristic.TargetFanState.AUTO
-        : this.platform.Characteristic.TargetFanState.MANUAL,
+    this.fanService.updateCharacteristic(
+      this.platform.Characteristic.CurrentFanState,
+      this.speedToFanState(speed),
     );
+
+    // If the device externally left high mode (e.g. CO2 override), cancel our timer
+    const fanInfo = payload[FAN_INFO_KEY];
+    if (fanInfo !== 'high' && this.turboTimer) {
+      this.log.debug('FanInfo left high externally — cancelling turbo timer');
+      clearTimeout(this.turboTimer);
+      this.turboTimer = null;
+      this.turboService.updateCharacteristic(this.platform.Characteristic.On, false);
+    }
   }
 
-  // Called by platform when MQTT state (raw speed) arrives
   handleSpeedResponse(speed: number): void {
     this.lastStatePayload = speed;
   }
 
-  private updateCurrentFanState(rotationSpeed: number): void {
-    let state: number;
-    if (rotationSpeed === 0) {
-      state = this.platform.Characteristic.CurrentFanState.INACTIVE;
-    } else if (rotationSpeed < ACTIVE_SPEED_THRESHOLD) {
-      state = this.platform.Characteristic.CurrentFanState.IDLE;
+  // ---- Turbo switch handlers ---------------------------------------------
+
+  handleSetTurbo(value: CharacteristicValue): void {
+    if (value as boolean) {
+      this.startTurbo();
     } else {
-      state = this.platform.Characteristic.CurrentFanState.BLOWING_AIR;
-    }
-    this.service.updateCharacteristic(this.platform.Characteristic.CurrentFanState, state);
-  }
-
-  private sendCommand(speedValue: number): void {
-    if (!this.allowsManualSpeedControl) {
-      const cmd = getVirtualRemoteCommandForRotationSpeed(speedValue);
-      this.platform.sendVirtualRemoteCommand(cmd);
-    } else {
-      const rawSpeed = Math.round(speedValue * 2.54);
-      this.platform.sendSpeed(rawSpeed);
-    }
-    this.platform.notifyManualOverride();
-  }
-
-  // ---- HomeKit SET/GET handlers -------------------------------------------
-
-  handleSetRotationSpeed(value: CharacteristicValue): void {
-    const speedValue = Number(value);
-    if (Number.isNaN(speedValue)) {
-      this.log.error(`RotationSpeed: invalid value ${value}`);
-      return;
-    }
-    this.log.info(`Set RotationSpeed → ${speedValue}/${MAX_ROTATION_SPEED}`);
-
-    // Switching to manual speed automatically sets TargetFanState to MANUAL
-    this.service.updateCharacteristic(
-      this.platform.Characteristic.TargetFanState,
-      this.platform.Characteristic.TargetFanState.MANUAL,
-    );
-    this.sendCommand(speedValue);
-  }
-
-  handleSetTargetFanState(value: CharacteristicValue): void {
-    const isAuto = value === this.platform.Characteristic.TargetFanState.AUTO;
-    this.log.info(`Set TargetFanState → ${isAuto ? 'AUTO' : 'MANUAL'}`);
-
-    if (isAuto) {
-      // 'medium' returns the CO2 sensor to normal control on CVE units
-      this.platform.sendVirtualRemoteCommand('medium');
-      this.platform.notifyManualOverride();
+      this.stopTurbo();
     }
   }
 
-  handleGetTargetFanState(): CharacteristicValue {
-    const fanInfo = this.lastStatusPayload?.[FAN_INFO_KEY];
-    const isAuto = !fanInfo || fanInfo === 'auto';
-    return isAuto
-      ? this.platform.Characteristic.TargetFanState.AUTO
-      : this.platform.Characteristic.TargetFanState.MANUAL;
+  handleGetTurbo(): CharacteristicValue {
+    return this.turboTimer !== null;
   }
 
-  handleSetActive(value: CharacteristicValue): void {
-    const activate = value === this.platform.Characteristic.Active.ACTIVE;
-    this.log.info(`Set Active → ${activate ? 'ACTIVE' : 'INACTIVE'}`);
-    this.service.updateCharacteristic(this.platform.Characteristic.Active, value);
-    this.sendCommand(activate ? ACTIVE_SPEED_THRESHOLD : 0);
-  }
+  // ---- Fan display handlers (read-only) ----------------------------------
 
-  handleGetActive(): CharacteristicValue {
-    const rotationSpeed = this.service.getCharacteristic(
-      this.platform.Characteristic.RotationSpeed,
-    ).value;
-
-    if (isNil(rotationSpeed)) {
-      return this.platform.Characteristic.Active.ACTIVE;
+  handleGetRotationSpeed(): CharacteristicValue {
+    const speed = this.lastStatusPayload?.[SPEED_STATUS_KEY];
+    if (speed !== null && speed !== undefined) {
+      return Math.round(speed as number);
     }
-
-    return (rotationSpeed as number) > 0
-      ? this.platform.Characteristic.Active.ACTIVE
-      : this.platform.Characteristic.Active.INACTIVE;
-  }
-
-  async handleGetRotationSpeed(): Promise<CharacteristicValue> {
-    // For all device types: return the actual measured speed percentage
-    const speedStatus = this.lastStatusPayload?.[SPEED_STATUS_KEY];
-    if (!isNil(speedStatus)) {
-      return Math.round(speedStatus as number);
-    }
-
-    // Fallback for non-CVE devices
-    if (this.config.device?.nonCve) {
-      const mode = this.lastStatusPayload?.[ACTUAL_MODE_KEY];
-      return mode ? getRotationSpeedFromActualMode(mode) : 0;
-    }
-
     return Math.round((this.lastStatePayload ?? 0) / 2.54);
   }
 
   handleGetCurrentFanState(): CharacteristicValue {
     return (
-      this.service.getCharacteristic(this.platform.Characteristic.CurrentFanState).value ?? 0
+      this.fanService.getCharacteristic(this.platform.Characteristic.CurrentFanState).value ?? 0
     );
+  }
+
+  // ---- Private -----------------------------------------------------------
+
+  private startTurbo(): void {
+    if (this.turboTimer) clearTimeout(this.turboTimer);
+
+    this.log.info(`Turbo ON → high for ${this.turboMinutes} min`);
+    this.platform.sendVirtualRemoteCommand('high');
+    this.platform.notifyManualOverride();
+
+    this.turboTimer = setTimeout(() => {
+      this.turboTimer = null;
+      this.log.info('Turbo timer expired → auto');
+      this.platform.sendVirtualRemoteCommand('medium');
+      this.turboService.updateCharacteristic(this.platform.Characteristic.On, false);
+    }, this.turboMinutes * 60_000);
+  }
+
+  private stopTurbo(): void {
+    if (this.turboTimer) {
+      clearTimeout(this.turboTimer);
+      this.turboTimer = null;
+    }
+    this.log.info('Turbo OFF → auto');
+    this.platform.sendVirtualRemoteCommand('medium');
+    this.platform.notifyManualOverride();
+  }
+
+  private speedToFanState(speed: number): number {
+    if (speed === 0) return this.platform.Characteristic.CurrentFanState.INACTIVE;
+    if (speed < ACTIVE_SPEED_THRESHOLD) return this.platform.Characteristic.CurrentFanState.IDLE;
+    return this.platform.Characteristic.CurrentFanState.BLOWING_AIR;
   }
 }

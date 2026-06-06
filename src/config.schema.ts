@@ -50,6 +50,11 @@ export const configSchema = z.object({
           manualOverrideMinutes: z.number().min(0).max(240).default(60),
         })
         .optional(),
+      turbo: z
+        .object({
+          durationMinutes: z.number().min(1).max(120).default(20),
+        })
+        .optional(),
       schedule: z
         .object({
           enabled: z.boolean().default(false),
