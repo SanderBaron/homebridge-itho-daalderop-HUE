@@ -13,10 +13,6 @@ const configMock: ConfigSchema = {
   device: { co2Sensor: true },
 };
 
-const configWithTurbo: ConfigSchema = {
-  ...configMock,
-  automation: { turbo: { durationMinutes: 1 } },
-};
 
 function makeStatusPayload(overrides: Partial<IthoStatusSanitizedPayload> = {}): IthoStatusSanitizedPayload {
   return {
@@ -95,58 +91,7 @@ describe('FanAccessory', () => {
     });
   });
 
-  describe('Turbo (Valve service)', () => {
-    it('handleGetTurboActive returns 0 when no timer is active', () => {
-      const fa = new FanAccessory(platformMock, accessoryMock, configMock);
-      expect(fa.handleGetTurboActive()).toBe(0);
-    });
-
-    it('startTurbo: sends high and sets timer', () => {
-      vi.useFakeTimers();
-      const fa = new FanAccessory(platformMock, accessoryMock, configMock);
-      const spy = platformMock.sendVirtualRemoteCommand as ReturnType<typeof vi.fn>;
-      spy.mockClear();
-
-      fa.handleSetTurboActive(1);
-
-      expect(spy).toHaveBeenCalledWith('high');
-      expect(fa['turboTimer']).not.toBeNull();
-      vi.useRealTimers();
-    });
-
-    it('stopTurbo: sends medium and clears timer', () => {
-      vi.useFakeTimers();
-      const fa = new FanAccessory(platformMock, accessoryMock, configMock);
-      fa.handleSetTurboActive(1);
-      const spy = platformMock.sendVirtualRemoteCommand as ReturnType<typeof vi.fn>;
-      spy.mockClear();
-
-      fa.handleSetTurboActive(0);
-
-      expect(spy).toHaveBeenCalledWith('medium');
-      expect(fa['turboTimer']).toBeNull();
-      vi.useRealTimers();
-    });
-
-    it('auto-reverts after durationMinutes and sends medium', () => {
-      vi.useFakeTimers();
-      const fa = new FanAccessory(platformMock, accessoryMock, configWithTurbo);
-      const spy = platformMock.sendVirtualRemoteCommand as ReturnType<typeof vi.fn>;
-      fa.handleSetTurboActive(1);
-      spy.mockClear();
-
-      vi.advanceTimersByTime(61_000);
-
-      expect(spy).toHaveBeenCalledWith('medium');
-      expect(fa['turboTimer']).toBeNull();
-      vi.useRealTimers();
-    });
-
-    it('handleGetRemainingDuration returns 0 when not active', () => {
-      const fa = new FanAccessory(platformMock, accessoryMock, configMock);
-      expect(fa.handleGetRemainingDuration()).toBe(0);
-    });
-  });
+  // Turbo logic is now in TurboAccessory — tested separately
 
   describe('handleGetRotationSpeed()', () => {
     it('returns Speed status when available', () => {

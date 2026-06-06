@@ -5,6 +5,7 @@ export const DEFAULT_BRIDGE_NAME = 'Itho Daalderop';
 export const MANUFACTURER = 'Itho Daalderop';
 export const DEFAULT_FAN_NAME = 'Mechanical Ventilation';
 export const DEFAULT_AIR_QUALITY_SENSOR_NAME = 'Air Quality Sensor';
+export const DEFAULT_TURBO_NAME = 'Turbo';
 
 /**
  * MQTT topic published by the Itho WiFi module with full status JSON.

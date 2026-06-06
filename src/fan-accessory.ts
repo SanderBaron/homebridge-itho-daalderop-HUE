@@ -14,30 +14,21 @@ import { ConfigSchema } from './config.schema';
 import { serialNumberFromUUID } from './utils/serial';
 import { PLUGIN_VERSION } from './version';
 
-const DEFAULT_TURBO_MINUTES = 20;
-const COUNTDOWN_INTERVAL_MS = 10_000; // update countdown every 10 s
-
 export class FanAccessory {
   private fanService: Service;
-  private turboService: Service;
   private informationService: Service | undefined;
 
-  private lastStatusPayload: IthoStatusSanitizedPayload | null = null;
+  lastStatusPayload: IthoStatusSanitizedPayload | null = null;
   private lastStatePayload: number | null = null;
 
-  private turboTimer: ReturnType<typeof setTimeout> | null = null;
-  private turboCountdownInterval: ReturnType<typeof setInterval> | null = null;
-  private turboEndsAt: number | null = null;
-
-  private readonly turboMinutes: number;
+  /** Callback invoked when FanInfo leaves 'high' (e.g. CO2 override or timer) */
+  onFanLeftHigh?: () => void;
 
   constructor(
     private readonly platform: HomebridgeIthoDaalderop,
     private readonly accessory: PlatformAccessory<IthoDaalderopAccessoryContext>,
     private readonly config: ConfigSchema,
   ) {
-    this.turboMinutes = config.automation?.turbo?.durationMinutes ?? DEFAULT_TURBO_MINUTES;
-
     this.log.debug('Initializing fan accessory');
 
     // ---- Accessory information ----
@@ -55,8 +46,12 @@ export class FanAccessory {
     );
 
     // ---- Remove stale services from previous versions ----
-    const oldSwitch = this.accessory.getService(this.platform.Service.Switch);
-    if (oldSwitch) this.accessory.removeService(oldSwitch);
+    for (const stale of [
+      this.accessory.getService(this.platform.Service.Switch),
+      this.accessory.getServiceById(this.platform.Service.Valve, 'turbo'),
+    ]) {
+      if (stale) this.accessory.removeService(stale);
+    }
 
     // ---- Fan service (read-only status display) ----
     this.fanService =
@@ -73,11 +68,8 @@ export class FanAccessory {
     const oldTargetFanState = this.fanService.getCharacteristic(
       this.platform.Characteristic.TargetFanState,
     );
-    if (oldTargetFanState) {
-      this.fanService.removeCharacteristic(oldTargetFanState);
-    }
+    if (oldTargetFanState) this.fanService.removeCharacteristic(oldTargetFanState);
 
-    // Speed: read-only, shows actual measured speed from MQTT
     this.fanService
       .getCharacteristic(this.platform.Characteristic.RotationSpeed)
       .setProps({ minValue: 0, maxValue: 100, minStep: 1 })
@@ -86,35 +78,6 @@ export class FanAccessory {
     this.fanService
       .getCharacteristic(this.platform.Characteristic.CurrentFanState)
       .onGet(this.handleGetCurrentFanState.bind(this));
-
-    // ---- Turbo — Valve service with countdown timer ----
-    // Valve is used (not Switch) because it supports SetDuration + RemainingDuration,
-    // giving a live countdown display just like irrigation tiles.
-    this.turboService =
-      this.accessory.getServiceById(this.platform.Service.Valve, 'turbo') ||
-      this.accessory.addService(this.platform.Service.Valve, 'Turbo', 'turbo');
-
-    this.turboService.setCharacteristic(this.platform.Characteristic.Name, 'Turbo');
-    this.turboService.setCharacteristic(
-      this.platform.Characteristic.ValveType,
-      this.platform.Characteristic.ValveType.GENERIC_VALVE,
-    );
-    this.turboService.setCharacteristic(this.platform.Characteristic.Active, 0);
-    this.turboService.setCharacteristic(this.platform.Characteristic.InUse, 0);
-    this.turboService.setCharacteristic(
-      this.platform.Characteristic.SetDuration,
-      this.turboMinutes * 60,
-    );
-    this.turboService.setCharacteristic(this.platform.Characteristic.RemainingDuration, 0);
-
-    this.turboService
-      .getCharacteristic(this.platform.Characteristic.Active)
-      .onSet(this.handleSetTurboActive.bind(this))
-      .onGet(this.handleGetTurboActive.bind(this));
-
-    this.turboService
-      .getCharacteristic(this.platform.Characteristic.RemainingDuration)
-      .onGet(this.handleGetRemainingDuration.bind(this));
   }
 
   get log() {
@@ -148,35 +111,15 @@ export class FanAccessory {
       this.speedToFanState(speed),
     );
 
-    // If the device externally left high mode, cancel our turbo timer
+    // Notify turbo accessory if device externally left high mode
     const fanInfo = payload[FAN_INFO_KEY];
-    if (fanInfo !== 'high' && this.turboTimer) {
-      this.log.debug('FanInfo left high externally — cancelling turbo');
-      this.cancelTurbo();
+    if (fanInfo !== 'high') {
+      this.onFanLeftHigh?.();
     }
   }
 
   handleSpeedResponse(speed: number): void {
     this.lastStatePayload = speed;
-  }
-
-  // ---- Turbo valve handlers ----------------------------------------------
-
-  handleSetTurboActive(value: CharacteristicValue): void {
-    if ((value as number) === 1) {
-      this.startTurbo();
-    } else {
-      this.stopTurbo();
-    }
-  }
-
-  handleGetTurboActive(): CharacteristicValue {
-    return this.turboTimer !== null ? 1 : 0;
-  }
-
-  handleGetRemainingDuration(): CharacteristicValue {
-    if (!this.turboEndsAt) return 0;
-    return Math.max(0, Math.round((this.turboEndsAt - Date.now()) / 1000));
   }
 
   // ---- Fan display handlers (read-only) ----------------------------------
@@ -194,61 +137,6 @@ export class FanAccessory {
   }
 
   // ---- Private -----------------------------------------------------------
-
-  private startTurbo(): void {
-    this.cancelTurbo();
-
-    const durationSeconds = this.turboMinutes * 60;
-    this.turboEndsAt = Date.now() + durationSeconds * 1000;
-
-    this.turboService.updateCharacteristic(this.platform.Characteristic.Active, 1);
-    this.turboService.updateCharacteristic(this.platform.Characteristic.InUse, 1);
-    this.turboService.updateCharacteristic(
-      this.platform.Characteristic.RemainingDuration,
-      durationSeconds,
-    );
-
-    this.platform.sendVirtualRemoteCommand('high');
-    this.platform.notifyManualOverride();
-    this.log.info(`Turbo ON → ${this.turboMinutes} min`);
-
-    // Live countdown update every 10 seconds
-    this.turboCountdownInterval = setInterval(() => {
-      const remaining = this.handleGetRemainingDuration() as number;
-      this.turboService.updateCharacteristic(
-        this.platform.Characteristic.RemainingDuration,
-        remaining,
-      );
-    }, COUNTDOWN_INTERVAL_MS);
-
-    this.turboTimer = setTimeout(() => {
-      this.stopTurbo();
-    }, durationSeconds * 1000);
-  }
-
-  private stopTurbo(): void {
-    this.cancelTurbo();
-    this.platform.sendVirtualRemoteCommand('medium');
-    this.platform.notifyManualOverride();
-    this.log.info('Turbo OFF → auto');
-  }
-
-  /** Cancel timer + interval + reset valve state, without sending any MQTT command */
-  private cancelTurbo(): void {
-    if (this.turboTimer) {
-      clearTimeout(this.turboTimer);
-      this.turboTimer = null;
-    }
-    if (this.turboCountdownInterval) {
-      clearInterval(this.turboCountdownInterval);
-      this.turboCountdownInterval = null;
-    }
-    this.turboEndsAt = null;
-
-    this.turboService.updateCharacteristic(this.platform.Characteristic.Active, 0);
-    this.turboService.updateCharacteristic(this.platform.Characteristic.InUse, 0);
-    this.turboService.updateCharacteristic(this.platform.Characteristic.RemainingDuration, 0);
-  }
 
   private speedToFanState(speed: number): number {
     if (speed === 0) return this.platform.Characteristic.CurrentFanState.INACTIVE;
