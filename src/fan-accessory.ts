@@ -14,21 +14,31 @@ import { ConfigSchema } from './config.schema';
 import { serialNumberFromUUID } from './utils/serial';
 import { PLUGIN_VERSION } from './version';
 
+const DEFAULT_TURBO_MINUTES = 20;
+const COUNTDOWN_INTERVAL_MS = 10_000;
+
 export class FanAccessory {
   private fanService: Service;
+  private turboService: Service;
   private informationService: Service | undefined;
 
   lastStatusPayload: IthoStatusSanitizedPayload | null = null;
   private lastStatePayload: number | null = null;
 
-  /** Callback invoked when FanInfo leaves 'high' (e.g. CO2 override or timer) */
-  onFanLeftHigh?: () => void;
+  private turboTimer: ReturnType<typeof setTimeout> | null = null;
+  private turboCountdownInterval: ReturnType<typeof setInterval> | null = null;
+  private turboEndsAt: number | null = null;
+
+  readonly turboMinutes: number;
 
   constructor(
     private readonly platform: HomebridgeIthoDaalderop,
     private readonly accessory: PlatformAccessory<IthoDaalderopAccessoryContext>,
     private readonly config: ConfigSchema,
   ) {
+    this.turboMinutes = config.automation?.turbo?.durationMinutes ?? DEFAULT_TURBO_MINUTES;
+    const turboLabel = `Turbo (${this.turboMinutes} min)`;
+
     this.log.debug('Initializing fan accessory');
 
     // ---- Accessory information ----
@@ -46,12 +56,8 @@ export class FanAccessory {
     );
 
     // ---- Remove stale services from previous versions ----
-    for (const stale of [
-      this.accessory.getService(this.platform.Service.Switch),
-      this.accessory.getServiceById(this.platform.Service.Valve, 'turbo'),
-    ]) {
-      if (stale) this.accessory.removeService(stale);
-    }
+    const oldSwitch = this.accessory.getService(this.platform.Service.Switch);
+    if (oldSwitch) this.accessory.removeService(oldSwitch);
 
     // ---- Fan service (read-only status display) ----
     this.fanService =
@@ -78,6 +84,37 @@ export class FanAccessory {
     this.fanService
       .getCharacteristic(this.platform.Characteristic.CurrentFanState)
       .onGet(this.handleGetCurrentFanState.bind(this));
+
+    // ---- Turbo — Valve sub-service with countdown ----
+    // Valve is the only HomeKit service with built-in countdown (RemainingDuration).
+    // It sits on the same accessory as the fan so they share one tile.
+    // Name includes the configured duration so it reads "Turbo (20 min)".
+    this.turboService =
+      this.accessory.getServiceById(this.platform.Service.Valve, 'turbo') ||
+      this.accessory.addService(this.platform.Service.Valve, turboLabel, 'turbo');
+
+    // Always update the name in case the duration setting changed
+    this.turboService.setCharacteristic(this.platform.Characteristic.Name, turboLabel);
+    this.turboService.setCharacteristic(
+      this.platform.Characteristic.ValveType,
+      this.platform.Characteristic.ValveType.GENERIC_VALVE,
+    );
+    this.turboService.setCharacteristic(this.platform.Characteristic.Active, 0);
+    this.turboService.setCharacteristic(this.platform.Characteristic.InUse, 0);
+    this.turboService.setCharacteristic(
+      this.platform.Characteristic.SetDuration,
+      this.turboMinutes * 60,
+    );
+    this.turboService.setCharacteristic(this.platform.Characteristic.RemainingDuration, 0);
+
+    this.turboService
+      .getCharacteristic(this.platform.Characteristic.Active)
+      .onSet(this.handleSetTurboActive.bind(this))
+      .onGet(this.handleGetTurboActive.bind(this));
+
+    this.turboService
+      .getCharacteristic(this.platform.Characteristic.RemainingDuration)
+      .onGet(this.handleGetRemainingDuration.bind(this));
   }
 
   get log() {
@@ -111,15 +148,35 @@ export class FanAccessory {
       this.speedToFanState(speed),
     );
 
-    // Notify turbo accessory if device externally left high mode
+    // If the device externally left high mode, cancel our turbo timer
     const fanInfo = payload[FAN_INFO_KEY];
-    if (fanInfo !== 'high') {
-      this.onFanLeftHigh?.();
+    if (fanInfo !== 'high' && this.turboTimer) {
+      this.log.debug('FanInfo left high externally — cancelling turbo');
+      this.cancelTurbo();
     }
   }
 
   handleSpeedResponse(speed: number): void {
     this.lastStatePayload = speed;
+  }
+
+  // ---- Turbo handlers ----------------------------------------------------
+
+  handleSetTurboActive(value: CharacteristicValue): void {
+    if ((value as number) === 1) {
+      this.startTurbo();
+    } else {
+      this.stopTurbo();
+    }
+  }
+
+  handleGetTurboActive(): CharacteristicValue {
+    return this.turboTimer !== null ? 1 : 0;
+  }
+
+  handleGetRemainingDuration(): CharacteristicValue {
+    if (!this.turboEndsAt) return 0;
+    return Math.max(0, Math.round((this.turboEndsAt - Date.now()) / 1000));
   }
 
   // ---- Fan display handlers (read-only) ----------------------------------
@@ -136,7 +193,55 @@ export class FanAccessory {
     );
   }
 
+  destroy(): void {
+    this.cancelTurbo();
+  }
+
   // ---- Private -----------------------------------------------------------
+
+  private startTurbo(): void {
+    this.cancelTurbo();
+
+    const durationSeconds = this.turboMinutes * 60;
+    this.turboEndsAt = Date.now() + durationSeconds * 1000;
+
+    this.turboService.updateCharacteristic(this.platform.Characteristic.Active, 1);
+    this.turboService.updateCharacteristic(this.platform.Characteristic.InUse, 1);
+    this.turboService.updateCharacteristic(
+      this.platform.Characteristic.RemainingDuration,
+      durationSeconds,
+    );
+
+    this.platform.sendVirtualRemoteCommand('high');
+    this.platform.notifyManualOverride();
+    this.log.info(`Turbo ON → high for ${this.turboMinutes} min`);
+
+    this.turboCountdownInterval = setInterval(() => {
+      const remaining = this.handleGetRemainingDuration() as number;
+      this.turboService.updateCharacteristic(
+        this.platform.Characteristic.RemainingDuration,
+        remaining,
+      );
+    }, COUNTDOWN_INTERVAL_MS);
+
+    this.turboTimer = setTimeout(() => this.stopTurbo(), durationSeconds * 1000);
+  }
+
+  private stopTurbo(): void {
+    this.cancelTurbo();
+    this.platform.sendVirtualRemoteCommand('medium');
+    this.platform.notifyManualOverride();
+    this.log.info('Turbo OFF → auto');
+  }
+
+  private cancelTurbo(): void {
+    if (this.turboTimer) { clearTimeout(this.turboTimer); this.turboTimer = null; }
+    if (this.turboCountdownInterval) { clearInterval(this.turboCountdownInterval); this.turboCountdownInterval = null; }
+    this.turboEndsAt = null;
+    this.turboService.updateCharacteristic(this.platform.Characteristic.Active, 0);
+    this.turboService.updateCharacteristic(this.platform.Characteristic.InUse, 0);
+    this.turboService.updateCharacteristic(this.platform.Characteristic.RemainingDuration, 0);
+  }
 
   private speedToFanState(speed: number): number {
     if (speed === 0) return this.platform.Characteristic.CurrentFanState.INACTIVE;

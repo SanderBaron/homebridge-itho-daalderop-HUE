@@ -12,7 +12,6 @@ import {
 import {
   DEFAULT_AIR_QUALITY_SENSOR_NAME,
   DEFAULT_FAN_NAME,
-  DEFAULT_TURBO_NAME,
   DEFAULT_HUMIDITY_BOOST_THRESHOLD,
   DEFAULT_HUMIDITY_COOLDOWN_MINUTES,
   DEFAULT_HUMIDITY_DROP_THRESHOLD,
@@ -32,7 +31,6 @@ import {
   VirtualRemoteCommand,
 } from './types';
 import { AirQualitySensorAccessory } from './air-quality-sensor-accessory';
-import { TurboAccessory } from './turbo-accessory';
 import { MqttApi } from './api/mqtt';
 import { HttpApi } from './api/http';
 import { sanitizeStatusPayload } from './utils/api';
@@ -51,7 +49,6 @@ export class HomebridgeIthoDaalderop implements DynamicPlatformPlugin {
 
   private fanAccessory: FanAccessory | null = null;
   private airQualityAccessory: AirQualitySensorAccessory | null = null;
-  private turboAccessory: TurboAccessory | null = null;
 
   private humidityAutomation: HumidityAutomation | null = null;
   private scheduleEngine: ScheduleEngine | null = null;
@@ -89,7 +86,7 @@ export class HomebridgeIthoDaalderop implements DynamicPlatformPlugin {
     this.mqttClient?.end();
     this.humidityAutomation?.destroy();
     this.scheduleEngine?.destroy();
-    this.turboAccessory?.destroy();
+    this.fanAccessory?.destroy();
   }
 
   configureAccessory(accessory: PlatformAccessory<IthoDaalderopAccessoryContext>): void {
@@ -160,10 +157,6 @@ export class HomebridgeIthoDaalderop implements DynamicPlatformPlugin {
       DEFAULT_AIR_QUALITY_SENSOR_NAME,
       this.api.hap.uuid.generate(DEFAULT_AIR_QUALITY_SENSOR_NAME),
     );
-    this.addTurboAccessory(
-      DEFAULT_TURBO_NAME,
-      this.api.hap.uuid.generate(DEFAULT_TURBO_NAME),
-    );
   }
 
   // ---- Accessory registration ---------------------------------------------
@@ -188,7 +181,6 @@ export class HomebridgeIthoDaalderop implements DynamicPlatformPlugin {
     }
 
     this.fanAccessory = new FanAccessory(this, accessory, this.config);
-    this.fanAccessory.onFanLeftHigh = () => this.turboAccessory?.notifyFanLeftHigh();
 
     if (this.config.api.protocol === 'http' && this.httpClient) {
       this.httpClient.polling.getSpeed.start();
@@ -222,27 +214,6 @@ export class HomebridgeIthoDaalderop implements DynamicPlatformPlugin {
     }
 
     this.airQualityAccessory = new AirQualitySensorAccessory(this, accessory, this.config);
-  }
-
-  private addTurboAccessory(displayName: string, uuid: string): void {
-    const existing = this.cachedAccessories.find(
-      a => a.UUID === uuid,
-    ) as PlatformAccessory<IthoDaalderopAccessoryContext> | undefined;
-
-    let accessory: PlatformAccessory<IthoDaalderopAccessoryContext>;
-    if (existing) {
-      this.log.info('[Platform] Restoring Turbo accessory from cache');
-      this.api.updatePlatformAccessories([existing]);
-      accessory = existing;
-    } else {
-      this.log.info('[Platform] Registering new Turbo accessory');
-      accessory = new this.api.platformAccessory<IthoDaalderopAccessoryContext>(
-        displayName,
-        uuid,
-      );
-      this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
-    }
-    this.turboAccessory = new TurboAccessory(this, accessory, this.config);
   }
 
   // ---- MQTT message routing -----------------------------------------------
