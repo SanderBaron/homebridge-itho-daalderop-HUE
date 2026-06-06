@@ -13,6 +13,11 @@ const configMock: ConfigSchema = {
   device: { co2Sensor: true },
 };
 
+const configWithTurbo: ConfigSchema = {
+  ...configMock,
+  automation: { turbo: { durationMinutes: 1 } },
+};
+
 function makeStatusPayload(overrides: Partial<IthoStatusSanitizedPayload> = {}): IthoStatusSanitizedPayload {
   return {
     temp: 21.5, hum: 55, ppmw: 0,
@@ -37,19 +42,16 @@ describe('FanAccessory', () => {
   });
 
   it('should have the correct displayName', () => {
-    const fa = new FanAccessory(platformMock, accessoryMock, configMock);
-    expect(fa['accessory'].displayName).toBe(DEFAULT_FAN_NAME);
+    expect(new FanAccessory(platformMock, accessoryMock, configMock)['accessory'].displayName).toBe(DEFAULT_FAN_NAME);
   });
-
-  // allowsManualSpeedControl removed — Turbo always uses virtual remote 'high'
 
   describe('handleStatusResponse()', () => {
     it('updates CurrentFanState to BLOWING_AIR for speed above threshold', () => {
       const fa = new FanAccessory(platformMock, accessoryMock, configMock);
-      const updateSpy = vi.fn();
-      fa['fanService'].updateCharacteristic = updateSpy;
+      const spy = vi.fn();
+      fa['fanService'].updateCharacteristic = spy;
       fa.handleStatusResponse(makeStatusPayload({ 'Speed status': 50 }));
-      expect(updateSpy).toHaveBeenCalledWith(
+      expect(spy).toHaveBeenCalledWith(
         platformMock.Characteristic.CurrentFanState,
         Characteristic.CurrentFanState.BLOWING_AIR,
       );
@@ -57,10 +59,10 @@ describe('FanAccessory', () => {
 
     it('updates CurrentFanState to IDLE for speed below threshold', () => {
       const fa = new FanAccessory(platformMock, accessoryMock, configMock);
-      const updateSpy = vi.fn();
-      fa['fanService'].updateCharacteristic = updateSpy;
+      const spy = vi.fn();
+      fa['fanService'].updateCharacteristic = spy;
       fa.handleStatusResponse(makeStatusPayload({ 'Speed status': ACTIVE_SPEED_THRESHOLD - 1 }));
-      expect(updateSpy).toHaveBeenCalledWith(
+      expect(spy).toHaveBeenCalledWith(
         platformMock.Characteristic.CurrentFanState,
         Characteristic.CurrentFanState.IDLE,
       );
@@ -68,10 +70,10 @@ describe('FanAccessory', () => {
 
     it('updates CurrentFanState to INACTIVE for speed 0', () => {
       const fa = new FanAccessory(platformMock, accessoryMock, configMock);
-      const updateSpy = vi.fn();
-      fa['fanService'].updateCharacteristic = updateSpy;
+      const spy = vi.fn();
+      fa['fanService'].updateCharacteristic = spy;
       fa.handleStatusResponse(makeStatusPayload({ 'Speed status': 0 }));
-      expect(updateSpy).toHaveBeenCalledWith(
+      expect(spy).toHaveBeenCalledWith(
         platformMock.Characteristic.CurrentFanState,
         Characteristic.CurrentFanState.INACTIVE,
       );
@@ -93,43 +95,44 @@ describe('FanAccessory', () => {
     });
   });
 
-  describe('Turbo switch', () => {
-    it('starts turbo: sends high and sets timer', () => {
+  describe('Turbo (Valve service)', () => {
+    it('handleGetTurboActive returns 0 when no timer is active', () => {
+      const fa = new FanAccessory(platformMock, accessoryMock, configMock);
+      expect(fa.handleGetTurboActive()).toBe(0);
+    });
+
+    it('startTurbo: sends high and sets timer', () => {
       vi.useFakeTimers();
       const fa = new FanAccessory(platformMock, accessoryMock, configMock);
       const spy = platformMock.sendVirtualRemoteCommand as ReturnType<typeof vi.fn>;
       spy.mockClear();
 
-      fa.handleSetTurbo(true);
+      fa.handleSetTurboActive(1);
 
       expect(spy).toHaveBeenCalledWith('high');
       expect(fa['turboTimer']).not.toBeNull();
       vi.useRealTimers();
     });
 
-    it('stops turbo: sends medium and clears timer', () => {
+    it('stopTurbo: sends medium and clears timer', () => {
       vi.useFakeTimers();
       const fa = new FanAccessory(platformMock, accessoryMock, configMock);
-      fa.handleSetTurbo(true); // start first
+      fa.handleSetTurboActive(1);
       const spy = platformMock.sendVirtualRemoteCommand as ReturnType<typeof vi.fn>;
       spy.mockClear();
 
-      fa.handleSetTurbo(false);
+      fa.handleSetTurboActive(0);
 
       expect(spy).toHaveBeenCalledWith('medium');
       expect(fa['turboTimer']).toBeNull();
       vi.useRealTimers();
     });
 
-    it('auto-reverts after durationMinutes', () => {
+    it('auto-reverts after durationMinutes and sends medium', () => {
       vi.useFakeTimers();
-      const fa = new FanAccessory(platformMock, accessoryMock, {
-        ...configMock,
-        automation: { turbo: { durationMinutes: 1 } },
-      });
+      const fa = new FanAccessory(platformMock, accessoryMock, configWithTurbo);
       const spy = platformMock.sendVirtualRemoteCommand as ReturnType<typeof vi.fn>;
-
-      fa.handleSetTurbo(true);
+      fa.handleSetTurboActive(1);
       spy.mockClear();
 
       vi.advanceTimersByTime(61_000);
@@ -139,22 +142,22 @@ describe('FanAccessory', () => {
       vi.useRealTimers();
     });
 
-    it('handleGetTurbo returns false when timer is null', () => {
+    it('handleGetRemainingDuration returns 0 when not active', () => {
       const fa = new FanAccessory(platformMock, accessoryMock, configMock);
-      expect(fa.handleGetTurbo()).toBe(false);
+      expect(fa.handleGetRemainingDuration()).toBe(0);
     });
   });
 
   describe('handleGetRotationSpeed()', () => {
-    it('returns Speed status when available', async () => {
+    it('returns Speed status when available', () => {
       const fa = new FanAccessory(platformMock, accessoryMock, configMock);
       fa.handleStatusResponse(makeStatusPayload({ 'Speed status': 42 }));
-      expect(await fa.handleGetRotationSpeed()).toBe(42);
+      expect(fa.handleGetRotationSpeed()).toBe(42);
     });
 
-    it('returns 0 when no data available', async () => {
+    it('returns 0 when no data available', () => {
       const fa = new FanAccessory(platformMock, accessoryMock, configMock);
-      expect(await fa.handleGetRotationSpeed()).toBe(0);
+      expect(fa.handleGetRotationSpeed()).toBe(0);
     });
   });
 });

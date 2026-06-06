@@ -31,6 +31,8 @@ const getServiceMock = () => ({
   setCharacteristic: mockSetCharacteristics,
   getCharacteristic: mockGetCharacteristics,
   updateCharacteristic: vi.fn(),
+  removeCharacteristic: vi.fn(),
+  getServiceById: vi.fn().mockReturnValue(null),
 });
 
 export const platformMock = {
