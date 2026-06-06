@@ -14,7 +14,6 @@ import {
 } from './settings';
 import {
   getRotationSpeedFromActualMode,
-  getRotationSpeedFromFanInfo,
   getVirtualRemoteCommandForRotationSpeed,
 } from './utils/api';
 import { ConfigSchema } from './config.schema';
@@ -72,17 +71,19 @@ export class FanAccessory {
 
     this.service
       .getCharacteristic(this.platform.Characteristic.RotationSpeed)
-      .setProps(
-        this.allowsManualSpeedControl
-          ? { minValue: 0, maxValue: 100, minStep: 1 }
-          : { minValue: 0, maxValue: 100, minStep: Math.round(100 / 3) },
-      )
+      .setProps({ minValue: 0, maxValue: 100, minStep: 1 })
       .onSet(this.handleSetRotationSpeed.bind(this))
       .onGet(this.handleGetRotationSpeed.bind(this));
 
     this.service
       .getCharacteristic(this.platform.Characteristic.CurrentFanState)
       .onGet(this.handleGetCurrentFanState.bind(this));
+
+    // TargetFanState: AUTO lets the CO2 sensor take control, MANUAL keeps the set speed
+    this.service
+      .getCharacteristic(this.platform.Characteristic.TargetFanState)
+      .onSet(this.handleSetTargetFanState.bind(this))
+      .onGet(this.handleGetTargetFanState.bind(this));
   }
 
   get log() {
@@ -111,7 +112,24 @@ export class FanAccessory {
   handleStatusResponse(payload: IthoStatusSanitizedPayload): void {
     this.lastStatusPayload = payload;
     const speed = (payload[SPEED_STATUS_KEY] ?? payload[REQ_FAN_SPEED_KEY] ?? 0) as number;
+
     this.updateCurrentFanState(speed);
+
+    // Keep slider in sync with actual measured speed
+    this.service.updateCharacteristic(
+      this.platform.Characteristic.RotationSpeed,
+      Math.round(speed),
+    );
+
+    // Keep TargetFanState in sync with FanInfo
+    const fanInfo = payload[FAN_INFO_KEY];
+    const isAuto = !fanInfo || fanInfo === 'auto';
+    this.service.updateCharacteristic(
+      this.platform.Characteristic.TargetFanState,
+      isAuto
+        ? this.platform.Characteristic.TargetFanState.AUTO
+        : this.platform.Characteristic.TargetFanState.MANUAL,
+    );
   }
 
   // Called by platform when MQTT state (raw speed) arrives
@@ -151,7 +169,32 @@ export class FanAccessory {
       return;
     }
     this.log.info(`Set RotationSpeed → ${speedValue}/${MAX_ROTATION_SPEED}`);
+
+    // Switching to manual speed automatically sets TargetFanState to MANUAL
+    this.service.updateCharacteristic(
+      this.platform.Characteristic.TargetFanState,
+      this.platform.Characteristic.TargetFanState.MANUAL,
+    );
     this.sendCommand(speedValue);
+  }
+
+  handleSetTargetFanState(value: CharacteristicValue): void {
+    const isAuto = value === this.platform.Characteristic.TargetFanState.AUTO;
+    this.log.info(`Set TargetFanState → ${isAuto ? 'AUTO' : 'MANUAL'}`);
+
+    if (isAuto) {
+      // 'medium' returns the CO2 sensor to normal control on CVE units
+      this.platform.sendVirtualRemoteCommand('medium');
+      this.platform.notifyManualOverride();
+    }
+  }
+
+  handleGetTargetFanState(): CharacteristicValue {
+    const fanInfo = this.lastStatusPayload?.[FAN_INFO_KEY];
+    const isAuto = !fanInfo || fanInfo === 'auto';
+    return isAuto
+      ? this.platform.Characteristic.TargetFanState.AUTO
+      : this.platform.Characteristic.TargetFanState.MANUAL;
   }
 
   handleSetActive(value: CharacteristicValue): void {
@@ -176,16 +219,18 @@ export class FanAccessory {
   }
 
   async handleGetRotationSpeed(): Promise<CharacteristicValue> {
-    if (!this.allowsManualSpeedControl) {
-      if (this.config.device?.nonCve) {
-        const mode = this.lastStatusPayload?.[ACTUAL_MODE_KEY];
-        return mode ? getRotationSpeedFromActualMode(mode) : 0;
-      }
-      if (this.config.device?.co2Sensor) {
-        const fanInfo = this.lastStatusPayload?.[FAN_INFO_KEY];
-        return fanInfo ? getRotationSpeedFromFanInfo(fanInfo) : 0;
-      }
+    // For all device types: return the actual measured speed percentage
+    const speedStatus = this.lastStatusPayload?.[SPEED_STATUS_KEY];
+    if (!isNil(speedStatus)) {
+      return Math.round(speedStatus as number);
     }
+
+    // Fallback for non-CVE devices
+    if (this.config.device?.nonCve) {
+      const mode = this.lastStatusPayload?.[ACTUAL_MODE_KEY];
+      return mode ? getRotationSpeedFromActualMode(mode) : 0;
+    }
+
     return Math.round((this.lastStatePayload ?? 0) / 2.54);
   }
 
