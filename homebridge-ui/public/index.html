@@ -480,34 +480,22 @@
             Snelle stijging: boost triggert ook bij een stijging van X% binnen Y seconden — pakt ook een snelle douche. Stel in op 0 om uit te schakelen. Itho spec: 3% / 24s.
           </div>
 
-          <div class="input-row-2">
-            <div class="input-group">
-              <label>Minimale cooldown (min)</label>
-              <input id="humidity_cooldownMinutes" type="number" min="1" max="120" placeholder="20" />
-            </div>
-            <div class="input-group">
-              <label>Override-pauze (min)</label>
-              <input id="humidity_manualOverrideMinutes" type="number" min="0" max="240" placeholder="60" />
-            </div>
+          <div class="input-group" style="max-width:200px;">
+            <label>Minimale cooldown (min)</label>
+            <input id="humidity_cooldownMinutes" type="number" min="1" max="120" placeholder="20" />
           </div>
-          <div style="font-size:11px;color:var(--muted);">
+          <div style="font-size:11px;color:var(--muted);margin-top:6px;">
             Ventilator blijft minimaal deze tijd op HIGH na het douchen. Lang douchen? Geen probleem — de automaat wacht tot de vochtigheid ook echt gedaald is.
           </div>
         </div>
 
         <!-- Wasruimte-only fields -->
         <div id="wasruimte-fields" class="hidden">
-          <div class="input-row-2" style="margin-top:10px;">
-            <div class="input-group">
-              <label>Minimum-stand drempel (%)</label>
-              <input id="humidity_minSpeedThreshold" type="number" min="40" max="85" placeholder="75" />
-            </div>
-            <div class="input-group">
-              <label>Override-pauze (min)</label>
-              <input id="humidity_manualOverrideMinutes_w" type="number" min="0" max="240" placeholder="60" />
-            </div>
+          <div class="input-group" style="max-width:200px;margin-top:10px;">
+            <label>Minimum-stand drempel (%)</label>
+            <input id="humidity_minSpeedThreshold" type="number" min="40" max="85" placeholder="75" />
           </div>
-          <div style="font-size:11px;color:var(--muted);">
+          <div style="font-size:11px;color:var(--muted);margin-top:6px;">
             Drie zones: onder minimum-drempel → laag, tussen drempels → auto, boven absolute drempel → hoog. Geen cooldown.
           </div>
         </div>
@@ -614,6 +602,26 @@
         </div>
         <div style="font-size:11px;color:var(--muted);">
           Detecteert het toiletlicht via een Hue-schakelaar en draait de CVE op maximale stand zolang als ingesteld.
+        </div>
+      </div>
+
+      <!-- DAGELIJKSE RESET -->
+      <div class="form-section">
+        <div class="form-section-title">🔁 Dagelijkse reset</div>
+        <div class="form-row">
+          <label>Ingeschakeld</label>
+          <label class="toggle-wrap" onclick="toggleSwitch('dailyReset_enabled')">
+            <span class="toggle" id="toggle-dailyReset_enabled"></span>
+            <span class="toggle-label" id="toggle-label-dailyReset_enabled">Uit</span>
+          </label>
+          <input type="checkbox" id="dailyReset_enabled" />
+        </div>
+        <div class="form-row">
+          <label>Tijdstip (UU:MM)</label>
+          <input id="dailyReset_time" type="text" placeholder="02:00" style="max-width:100px;" />
+        </div>
+        <div style="font-size:11px;color:var(--muted);">
+          Elke nacht stuurt de plugin automatisch het commando 'automatisch' — veiligheidsnet zodat de CVE nooit per ongeluk voor langere tijd in een ongewenste stand blijft staan.
         </div>
       </div>
 
@@ -798,8 +806,6 @@
           setVal('humidity_riseRate',            cfg.automation?.humidity?.riseRate            ?? 3);
           setVal('humidity_riseWindowSeconds',   cfg.automation?.humidity?.riseWindowSeconds   ?? 24);
           setVal('humidity_minSpeedThreshold',   cfg.automation?.humidity?.minSpeedThreshold   ?? 75);
-          setVal('humidity_manualOverrideMinutes',   cfg.automation?.humidity?.manualOverrideMinutes ?? 60);
-          setVal('humidity_manualOverrideMinutes_w', cfg.automation?.humidity?.manualOverrideMinutes ?? 60);
           updateHumidityModeHints();
 
           // Schema
@@ -821,6 +827,10 @@
           setVal('toiletLight_hueSensorId',   cfg.automation?.toiletLight?.hueSensorId   || '');
           setVal('toiletLight_minOnMinutes',  cfg.automation?.toiletLight?.minOnMinutes  ?? 2);
           setVal('toiletLight_boostMinutes',  cfg.automation?.toiletLight?.boostMinutes  ?? 20);
+
+          // Dagelijkse reset
+          setToggle('dailyReset_enabled', cfg.dailyReset?.enabled ?? true);
+          setVal('dailyReset_time', cfg.dailyReset?.time || '02:00');
 
           // Overig
           setToggle('verboseLogging', cfg.verboseLogging ?? false);
@@ -859,25 +869,21 @@
       function buildHumidityConfig() {
         const mode = getVal('humidity_mode') || 'badkamer';
         const isBadkamer = mode !== 'wasruimte';
-        const manualOverride = isBadkamer
-          ? parseInt(getVal('humidity_manualOverrideMinutes'))  || 60
-          : parseInt(getVal('humidity_manualOverrideMinutes_w')) || 60;
         const cfg = {
-          enabled:              getChecked('humidity_enabled'),
+          enabled:        getChecked('humidity_enabled'),
           mode,
-          boostThreshold:       parseInt(getVal('humidity_boostThreshold'))   || 85,
-          dropThreshold:        parseInt(getVal('humidity_dropThreshold'))     || 82,
-          manualOverrideMinutes: manualOverride,
+          boostThreshold: parseInt(getVal('humidity_boostThreshold')) || 85,
+          dropThreshold:  parseInt(getVal('humidity_dropThreshold'))  || 82,
         };
         if (isBadkamer) {
           Object.assign(cfg, {
-            cooldownMinutes:     parseInt(getVal('humidity_cooldownMinutes'))     || 20,
-            riseRate:            parseFloat(getVal('humidity_riseRate'))          ?? 3,
-            riseWindowSeconds:   parseInt(getVal('humidity_riseWindowSeconds'))   || 24,
+            cooldownMinutes:   parseInt(getVal('humidity_cooldownMinutes'))   || 20,
+            riseRate:          parseFloat(getVal('humidity_riseRate'))        || 3,
+            riseWindowSeconds: parseInt(getVal('humidity_riseWindowSeconds')) || 24,
           });
         } else {
           Object.assign(cfg, {
-            minSpeedThreshold:   parseInt(getVal('humidity_minSpeedThreshold'))  || 75,
+            minSpeedThreshold: parseInt(getVal('humidity_minSpeedThreshold')) || 75,
           });
         }
         return cfg;
@@ -969,6 +975,13 @@
           } else {
             delete cfg.hue;
           }
+
+          // Dagelijkse reset
+          const resetTime = getVal('dailyReset_time') || '02:00';
+          cfg.dailyReset = {
+            enabled: getChecked('dailyReset_enabled'),
+            time: resetTime,
+          };
 
           // Overig
           cfg.verboseLogging = getChecked('verboseLogging');

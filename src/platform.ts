@@ -15,11 +15,11 @@ import {
   DEFAULT_HUMIDITY_BOOST_THRESHOLD,
   DEFAULT_HUMIDITY_COOLDOWN_MINUTES,
   DEFAULT_HUMIDITY_DROP_THRESHOLD,
+  DEFAULT_DAILY_RESET_TIME,
   DEFAULT_HUMIDITY_MIN_SPEED_THRESHOLD,
   DEFAULT_HUMIDITY_MODE,
   DEFAULT_HUMIDITY_RISE_RATE,
   DEFAULT_HUMIDITY_RISE_WINDOW_SECONDS,
-  DEFAULT_MANUAL_OVERRIDE_MINUTES,
   MQTT_STATE_TOPIC,
   MQTT_STATUS_TOPIC,
   PLATFORM_NAME,
@@ -56,16 +56,10 @@ export class HomebridgeIthoDaalderop implements DynamicPlatformPlugin {
 
   private humidityAutomation: HumidityAutomation | null = null;
   private scheduleEngine: ScheduleEngine | null = null;
-
-  private manualOverrideUntil: number | null = null;
-  private readonly manualOverrideMinutes: number;
+  private dailyResetTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(public readonly log: Logger, config: PlatformConfig, public readonly api: API) {
     this.config = config as ConfigSchema;
-    this.manualOverrideMinutes =
-      (config as ConfigSchema).automation?.humidity?.manualOverrideMinutes ??
-      DEFAULT_MANUAL_OVERRIDE_MINUTES;
-
     this.api.on(APIEvent.DID_FINISH_LAUNCHING, this.handleDidFinishLaunching.bind(this));
     this.api.on(APIEvent.SHUTDOWN, this.handleShutdown.bind(this));
   }
@@ -83,6 +77,7 @@ export class HomebridgeIthoDaalderop implements DynamicPlatformPlugin {
     this.setupApiClients();
     this.setupAutomations();
     this.registerAccessories();
+    this.scheduleDailyReset();
   }
 
   private handleShutdown(): void {
@@ -91,6 +86,10 @@ export class HomebridgeIthoDaalderop implements DynamicPlatformPlugin {
     this.humidityAutomation?.destroy();
     this.scheduleEngine?.destroy();
     this.fanAccessory?.destroy();
+    if (this.dailyResetTimer) {
+      clearTimeout(this.dailyResetTimer);
+      this.dailyResetTimer = null;
+    }
   }
 
   configureAccessory(accessory: PlatformAccessory<IthoDaalderopAccessoryContext>): void {
@@ -259,13 +258,8 @@ export class HomebridgeIthoDaalderop implements DynamicPlatformPlugin {
   // ---- Automation callbacks -----------------------------------------------
 
   private handleAutomationSpeedChange(speed: SupportedVirtualRemoteCommands | 'auto'): void {
-    if (this.isManualOverrideActive()) {
-      this.log.debug('[Platform] Manual override active — ignoring humidity automation');
-      return;
-    }
-
     if (speed === 'auto') {
-      // If a schedule is active, apply that speed; otherwise return to medium
+      // If a schedule is active, apply that speed; otherwise return to medium (CO₂ auto)
       const entry = this.scheduleEngine?.getActiveEntry();
       this.sendVirtualRemoteCommand(entry ? entry.speed : 'medium');
     } else {
@@ -274,31 +268,41 @@ export class HomebridgeIthoDaalderop implements DynamicPlatformPlugin {
   }
 
   private handleScheduleSpeedChange(speed: SupportedVirtualRemoteCommands | null): void {
-    if (this.isManualOverrideActive()) return;
     if (this.humidityAutomation?.getState() === 'boosting') return; // humidity has priority
-
     this.sendVirtualRemoteCommand(speed ?? 'medium');
   }
 
-  // ---- Public API for accessories -----------------------------------------
+  // ---- Daily reset --------------------------------------------------------
 
-  /** Notify the platform that the user manually changed the fan in HomeKit. */
-  notifyManualOverride(): void {
-    const ms = this.manualOverrideMinutes * 60_000;
-    this.manualOverrideUntil = Date.now() + ms;
-    this.log.info(`[Platform] Manual override active for ${this.manualOverrideMinutes} min`);
-    if (this.humidityAutomation?.getState() !== 'idle') {
+  /**
+   * Schedules a daily failsafe reset at the configured time.
+   * Sends 'medium' (CO₂ auto) every night so a forgotten manual override
+   * never leaves the CVE stuck in an undesired state indefinitely.
+   */
+  private scheduleDailyReset(): void {
+    const resetCfg = this.config.dailyReset;
+    if (!resetCfg?.enabled) return;
+
+    const time = resetCfg.time ?? DEFAULT_DAILY_RESET_TIME;
+    const [hours, minutes] = time.split(':').map(Number);
+
+    const now = new Date();
+    const next = new Date();
+    next.setHours(hours, minutes, 0, 0);
+    if (next <= now) next.setDate(next.getDate() + 1);
+
+    const delay = next.getTime() - now.getTime();
+    this.log.debug(
+      `[DailyReset] Volgende reset ingepland om ${time} (over ${Math.round(delay / 60_000)} min)`,
+    );
+
+    this.dailyResetTimer = setTimeout(() => {
+      this.dailyResetTimer = null;
+      this.log.info(`[DailyReset] Dagelijkse reset om ${time} — terug naar automatisch`);
       this.humidityAutomation?.cancel();
-    }
-  }
-
-  isManualOverrideActive(): boolean {
-    if (!this.manualOverrideUntil) return false;
-    if (Date.now() > this.manualOverrideUntil) {
-      this.manualOverrideUntil = null;
-      return false;
-    }
-    return true;
+      this.sendVirtualRemoteCommand('medium');
+      this.scheduleDailyReset(); // opnieuw inplannen voor de volgende dag
+    }, delay);
   }
 
   sendVirtualRemoteCommand(command: VirtualRemoteCommand | SupportedVirtualRemoteCommands): void {

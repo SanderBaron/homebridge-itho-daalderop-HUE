@@ -64,7 +64,6 @@ export const configSchema = z.object({
           dropThreshold: z.number().min(40).max(95).default(82),
           /** Minimum minutes to keep fan at high after humidity drops */
           cooldownMinutes: z.number().min(1).max(120).default(20),
-          manualOverrideMinutes: z.number().min(0).max(240).default(60),
           /** Rapid-rise detection: boost when humidity rises this many % within riseWindowSeconds (0 = disabled) */
           riseRate: z.number().min(0).max(20).default(3),
           /** Rapid-rise detection window in seconds (Itho spec: 24 or 48) */
@@ -118,6 +117,17 @@ export const configSchema = z.object({
           boostMinutes: z.number().min(1).max(120).default(20),
         })
         .optional(),
+    })
+    .optional(),
+
+  /**
+   * Daily failsafe reset — sends 'medium' (CO₂ auto) at a fixed time every night
+   * so a forgotten manual override never leaves the CVE stuck indefinitely.
+   */
+  dailyReset: z
+    .object({
+      enabled: z.boolean().default(true),
+      time: timeSchema.default('02:00'),
     })
     .optional(),
 

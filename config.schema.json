@@ -101,6 +101,24 @@
         }
       },
 
+      "dailyReset": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "title": "Dagelijkse reset inschakelen",
+            "type": "boolean",
+            "default": true
+          },
+          "time": {
+            "title": "Resettijd (UU:MM)",
+            "type": "string",
+            "default": "02:00",
+            "placeholder": "02:00",
+            "description": "Elke nacht om dit tijdstip stuurt de plugin automatisch het commando 'automatisch', ongeacht de huidige stand. Veiligheidsnet zodat je nooit per ongeluk de ventilatie voor langere tijd in een ongewenste stand laat staan."
+          }
+        }
+      },
+
       "hue": {
         "type": "object",
         "properties": {
@@ -200,13 +218,6 @@
                 "minimum": 40,
                 "maximum": 85,
                 "description": "Alleen wasruimte-modus: onder deze waarde gaat de ventilator naar de minimumstand."
-              },
-              "manualOverrideMinutes": {
-                "title": "Override-pauze na handmatige bediening (min)",
-                "type": "number",
-                "default": 60,
-                "minimum": 0,
-                "maximum": 240
               }
             }
           },
@@ -419,14 +430,7 @@
             { "key": "automation.humidity.dropThreshold", "description": "Cooldown timer starts when humidity drops below this %." }
           ]
         },
-        {
-          "type": "flex",
-          "flex-flow": "row wrap",
-          "items": [
-            { "key": "automation.humidity.cooldownMinutes", "description": "Minutes to keep running HIGH after humidity drops, before returning to auto." },
-            { "key": "automation.humidity.manualOverrideMinutes", "description": "After a manual speed change, automation is paused this many minutes." }
-          ]
-        }
+        { "key": "automation.humidity.cooldownMinutes" }
       ]
     },
 
@@ -462,6 +466,18 @@
             }
           ]
         }
+      ]
+    },
+
+    {
+      "type": "fieldset",
+      "title": "Dagelijkse reset",
+      "description": "Stuurt elke nacht automatisch het commando 'automatisch' — veiligheidsnet zodat de CVE nooit per ongeluk voor langere tijd in een ongewenste stand blijft staan.",
+      "expandable": true,
+      "expanded": true,
+      "items": [
+        { "key": "dailyReset.enabled" },
+        { "key": "dailyReset.time" }
       ]
     },
 

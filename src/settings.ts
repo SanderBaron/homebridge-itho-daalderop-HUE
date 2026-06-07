@@ -31,10 +31,12 @@ export const FALLBACK_VIRTUAL_REMOTE_COMMAND = 'medium';
 
 // Humidity automation defaults
 export const DEFAULT_HUMIDITY_MODE = 'badkamer' as const;
-export const DEFAULT_HUMIDITY_BOOST_THRESHOLD = 85;   // Itho spec: 85% badkamer, 90% wasruimte
-export const DEFAULT_HUMIDITY_DROP_THRESHOLD = 82;    // Itho spec: 82% badkamer, 75% wasruimte
+export const DEFAULT_HUMIDITY_BOOST_THRESHOLD = 85;     // Itho spec: 85% badkamer, 90% wasruimte
+export const DEFAULT_HUMIDITY_DROP_THRESHOLD = 82;      // Itho spec: 82% badkamer, 75% wasruimte
 export const DEFAULT_HUMIDITY_COOLDOWN_MINUTES = 20;
-export const DEFAULT_MANUAL_OVERRIDE_MINUTES = 60;
-export const DEFAULT_HUMIDITY_RISE_RATE = 3;          // % rise to trigger rapid-rise boost
+export const DEFAULT_HUMIDITY_RISE_RATE = 3;            // % rise to trigger rapid-rise boost
 export const DEFAULT_HUMIDITY_RISE_WINDOW_SECONDS = 24; // detection window (24 or 48 s per Itho)
 export const DEFAULT_HUMIDITY_MIN_SPEED_THRESHOLD = 75; // wasruimte: below this → low
+
+// Daily reset defaults
+export const DEFAULT_DAILY_RESET_TIME = '02:00';

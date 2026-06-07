@@ -182,7 +182,6 @@ export class FanAccessory {
   private startTurbo(): void {
     this.cancelTurbo();
     this.platform.sendVirtualRemoteCommand('high');
-    this.platform.notifyManualOverride();
     this.log.info(`Turbo ON → high for ${this.turboMinutes} min`);
     this.turboTimer = setTimeout(() => this.stopTurbo(), this.turboMinutes * 60_000);
   }
@@ -190,7 +189,6 @@ export class FanAccessory {
   private stopTurbo(): void {
     this.cancelTurbo();
     this.platform.sendVirtualRemoteCommand('medium');
-    this.platform.notifyManualOverride();
     this.log.info('Turbo OFF → auto');
   }
 
