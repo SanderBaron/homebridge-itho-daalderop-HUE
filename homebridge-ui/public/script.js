@@ -131,8 +131,13 @@ async function loadDashboard() {
   try {
     const cfg = state.config;
     const deviceIp = cfg?.api?.deviceIp || (cfg?.api?.protocol === 'http' ? cfg?.api?.ip : null);
+    // Loopback betekent "deze server" — toon dan het echte adres waarop
+    // Homebridge bereikt wordt; dat leest prettiger bij troubleshooten.
+    const brokerIp = ['127.0.0.1', 'localhost', '::1'].includes(cfg?.api?.ip)
+      ? window.location.hostname
+      : cfg?.api?.ip || '';
     const mqttBroker = cfg?.api?.protocol === 'mqtt'
-      ? `${cfg.api.ip || ''}:${cfg.api.port || ''}` : null;
+      ? `${brokerIp}:${cfg.api.port || ''}` : null;
 
     if (!deviceIp) {
       showDashError('Geen device IP ingesteld. Ga naar Instellingen → Verbinding en vul het Device IP in.');
@@ -262,7 +267,7 @@ async function loadSettings() {
     setVal('hue_apiKey',   cfg.hue?.apiKey   || '');
     if (cfg.hue?.bridgeIp && cfg.hue?.apiKey) {
       setHueStatus('status-online', 'Verbonden (cached)');
-      refreshLightsAndSensors().catch(() => undefined);
+      refreshLightsAndSensors(true).catch(() => undefined);
     }
 
     // Spiegelverwarming
@@ -527,7 +532,8 @@ async function pairBridge() {
   }
 }
 
-async function refreshLightsAndSensors() {
+/** @param silent true bij automatisch laden — geen succes-toast, alleen fouten */
+async function refreshLightsAndSensors(silent = false) {
   const ip     = getVal('hue_bridgeIp');
   const apiKey = getVal('hue_apiKey');
   if (!ip || !apiKey) return;
@@ -544,7 +550,9 @@ async function refreshLightsAndSensors() {
     renderSensorsList();
     populateLightDropdowns();
     populateSensorDropdowns();
-    homebridge.toast.success(`${state.lights.length} lampen, ${state.sensors.length} schakelaars gevonden`);
+    if (!silent) {
+      homebridge.toast.success(`${state.lights.length} lampen, ${state.sensors.length} schakelaars gevonden`);
+    }
   } catch (err) {
     homebridge.toast.error('Ophalen mislukt: ' + describeError(err));
   } finally {
