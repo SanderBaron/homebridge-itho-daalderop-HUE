@@ -100,20 +100,47 @@ export const configSchema = z.object({
           enabled: z.boolean().default(false),
           /** Hue light resource ID for the mirror heater */
           hueLightId: z.string().optional(),
-          /** Minutes to keep the mirror heater on after humidity drops */
+          /** Hue button/sensor resource ID for manual trigger */
+          hueButtonId: z.string().optional(),
+          /**
+           * RFT-RV humidity (%) that triggers the mirror heater.
+           * Source: 'Indoorhumidity (%)' field in ithostatus.
+           */
+          triggerThreshold: z.number().min(50).max(100).default(70),
+          /**
+           * Optional guard: skip activation when humidity already dropped below
+           * this value during the trigger delay. Omitted = guard disabled.
+           * Does NOT extend or shorten the burn time (durationMinutes).
+           */
+          dropThreshold: z.number().min(40).max(95).optional(),
+          /** Rapid-rise trigger: activate when humidity rises this many % within riseWindowSeconds (0 = disabled). OR with triggerThreshold. */
+          riseRate: z.number().min(0).max(20).default(3),
+          /** Rapid-rise detection window in seconds (Itho spec: 24 or 48) */
+          riseWindowSeconds: z.number().min(5).max(120).default(24),
+          /**
+           * Minimum minutes after the CVE fan boost before the mirror heater
+           * can activate. The mirror is not immediately fogged on shower start.
+           */
+          triggerDelayMinutes: z.number().min(0).max(60).default(5),
+          /** Minutes mirror stays on after humidity drops below dropThreshold */
           durationMinutes: z.number().min(1).max(120).default(30),
+          /** Minutes mirror stays on when triggered manually via Hue button */
+          manualButtonTimerMinutes: z.number().min(1).max(120).default(30),
         })
         .optional(),
 
-      /** Phase 2: toilet ventilation boost via Hue button/sensor */
+      /** Phase 2: toilet ventilation boost via Hue light/sensor detection */
       toiletLight: z
         .object({
           enabled: z.boolean().default(false),
-          /** Hue sensor/button resource ID to detect toilet light */
+          /**
+           * Hue resource ID to monitor. Can be a light ID (the toilet lamp itself)
+           * or a presence sensor ID.
+           */
           hueSensorId: z.string().optional(),
-          /** Minimum minutes the light must be on to trigger a boost */
+          /** Minimum minutes the light must be on before CVE boost triggers */
           minOnMinutes: z.number().min(1).max(30).default(2),
-          /** Minutes to run CVE at high speed after trigger */
+          /** Minutes CVE runs at HIGH speed after trigger */
           boostMinutes: z.number().min(1).max(120).default(20),
         })
         .optional(),

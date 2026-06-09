@@ -230,18 +230,71 @@
                 "default": false
               },
               "hueLightId": {
-                "title": "Hue lamp-ID (spiegel)",
+                "title": "Hue lamp-ID (spiegelverwarming)",
                 "type": "string",
-                "placeholder": "bijv. 5 of een UUID",
-                "description": "ID van de Hue-lamp die de spiegelverwarming aanstuurt."
+                "placeholder": "bijv. 5",
+                "description": "ID van de Hue-lamp die de spiegelverwarming aanstuurt. Te vinden via de Hue app of de knop hieronder."
+              },
+              "hueButtonId": {
+                "title": "Hue knop-ID (handmatig bedienen)",
+                "type": "string",
+                "placeholder": "bijv. 8",
+                "description": "Optioneel. Sensor-ID van de Hue-schakelaar die de spiegel handmatig inschakelt."
+              },
+              "triggerThreshold": {
+                "title": "Inschakelen bij RFT-RV vochtigheid (%)",
+                "type": "number",
+                "default": 70,
+                "minimum": 50,
+                "maximum": 100,
+                "description": "Spiegel gaat aan als de externe RFT-RV sensor (Indoorhumidity) deze waarde bereikt. Op basis van douchemeting: advies 70%."
+              },
+              "dropThreshold": {
+                "title": "Annuleerdrempel (%, optioneel)",
+                "type": "number",
+                "minimum": 40,
+                "maximum": 95,
+                "description": "Optioneel. Alleen gebruikt tijdens de vertraging na de fan-boost: is de RFT-RV dan alweer onder deze waarde gezakt, dan gaat de spiegel niet aan. Verlengt of verkort de brandtijd niet. Leeg laten = uit."
+              },
+              "riseRate": {
+                "title": "Snelle stijging drempel (%)",
+                "type": "number",
+                "default": 3,
+                "minimum": 0,
+                "maximum": 20,
+                "description": "Spiegel triggert ook bij een stijging van dit % binnen het detectievenster — ook als de inschakeldrempel nog niet bereikt is. Stel in op 0 om uit te schakelen."
+              },
+              "riseWindowSeconds": {
+                "title": "Detectievenster (seconden)",
+                "type": "number",
+                "default": 24,
+                "minimum": 5,
+                "maximum": 120,
+                "description": "Tijdvenster voor snelle stijging. Itho spec: 24 of 48 seconden."
+              },
+              "triggerDelayMinutes": {
+                "title": "Vertraging na ventilator-boost (min)",
+                "type": "number",
+                "default": 5,
+                "minimum": 0,
+                "maximum": 60,
+                "description": "Minimale wachttijd na het inschakelen van de CVE-boost voordat de spiegel kan aangaan. De spiegel beslaat niet direct op het moment dat de RFT-RV reageert."
               },
               "durationMinutes": {
-                "title": "Brandtijd spiegel (min)",
+                "title": "Nalooptimer spiegel (min)",
                 "type": "number",
                 "default": 30,
                 "minimum": 1,
                 "maximum": 120,
-                "description": "Hoelang de spiegelverwarming aan blijft nadat de vochtigheid daalt."
+                "description": "Hoelang de spiegelverwarming aan blijft nadat de vochtigheid onder de uitschakel-drempel zakt."
+              },
+              "manualButtonTimerMinutes": {
+                "title": "Handmatige timer (min)",
+                "type": "number",
+                "default": 30,
+                "minimum": 1,
+                "maximum": 120,
+                "description": "Hoelang de spiegel aan blijft na een druk op de Hue-knop."
               }
             }
           },
@@ -249,23 +302,23 @@
             "type": "object",
             "properties": {
               "enabled": {
-                "title": "Toilet-detectie inschakelen",
+                "title": "Toilet-ventilatie inschakelen",
                 "type": "boolean",
                 "default": false
               },
               "hueSensorId": {
-                "title": "Hue sensor/knop ID (toilet)",
+                "title": "Hue lamp-ID (toiletlicht)",
                 "type": "string",
-                "placeholder": "bijv. 12 of een UUID",
-                "description": "ID van de Hue-schakelaar of -sensor die het toiletlicht detecteert."
+                "placeholder": "bijv. 3",
+                "description": "ID van de Hue-lamp die het toiletlicht detecteert. Vul het lamp-ID in, niet het sensor-ID."
               },
               "minOnMinutes": {
-                "title": "Minimale brandduur licht (min)",
+                "title": "Minimale brandduur voor boost (min)",
                 "type": "number",
                 "default": 2,
                 "minimum": 1,
                 "maximum": 30,
-                "description": "Het licht moet minimaal zo lang aan zijn geweest om de CVE-boost te activeren."
+                "description": "Het licht moet minimaal zo lang aan zijn geweest om de CVE-boost te activeren. Voorkomt activatie bij een korte toiletbezoek."
               },
               "boostMinutes": {
                 "title": "CVE boost-duur (min)",
@@ -273,7 +326,7 @@
                 "default": 20,
                 "minimum": 1,
                 "maximum": 120,
-                "description": "Hoelang de CVE op maximale stand draait na detectie."
+                "description": "Hoelang de CVE op maximale stand draait na detectie. Boost loopt door ook als het licht al uit is."
               }
             }
           },
@@ -501,8 +554,8 @@
 
     {
       "type": "fieldset",
-      "title": "Spiegelverwarming (Phase 2 — Hue)",
-      "description": "Stuurt een Hue-lamp (spiegelverwarming) aan op basis van de vochtigheid in de badkamer. Vereist Hue Bridge-koppeling hierboven.",
+      "title": "Spiegelverwarming (Hue)",
+      "description": "Stuurt de spiegelverwarming aan op basis van de RFT-RV vochtigheidsensor. De externe sensor reageert trager dan de duct-sensor — ideaal voor de spiegel.",
       "expandable": true,
       "expanded": false,
       "items": [
@@ -512,7 +565,32 @@
           "flex-flow": "row wrap",
           "items": [
             { "key": "automation.mirrorHeater.hueLightId" },
-            { "key": "automation.mirrorHeater.durationMinutes" }
+            { "key": "automation.mirrorHeater.hueButtonId" }
+          ]
+        },
+        {
+          "type": "flex",
+          "flex-flow": "row wrap",
+          "items": [
+            { "key": "automation.mirrorHeater.triggerThreshold" },
+            { "key": "automation.mirrorHeater.dropThreshold" }
+          ]
+        },
+        {
+          "type": "flex",
+          "flex-flow": "row wrap",
+          "items": [
+            { "key": "automation.mirrorHeater.riseRate" },
+            { "key": "automation.mirrorHeater.riseWindowSeconds" }
+          ]
+        },
+        {
+          "type": "flex",
+          "flex-flow": "row wrap",
+          "items": [
+            { "key": "automation.mirrorHeater.triggerDelayMinutes" },
+            { "key": "automation.mirrorHeater.durationMinutes" },
+            { "key": "automation.mirrorHeater.manualButtonTimerMinutes" }
           ]
         }
       ]
@@ -520,17 +598,17 @@
 
     {
       "type": "fieldset",
-      "title": "Toilet-ventilatie (Phase 2 — Hue)",
-      "description": "Detecteert het toiletlicht via een Hue-schakelaar of -sensor en stuurt de CVE aan. Als het licht langer aan is dan de drempel, gaat de ventilator op maximum.",
+      "title": "Toilet-ventilatie (Hue)",
+      "description": "Detecteert het toiletlicht via een Hue-lamp en boosted de CVE. Langer dan de ingestelde minimale brandduur aan? Dan gaat de ventilator voor een instelbare periode op maximum.",
       "expandable": true,
       "expanded": false,
       "items": [
         { "key": "automation.toiletLight.enabled" },
+        { "key": "automation.toiletLight.hueSensorId" },
         {
           "type": "flex",
           "flex-flow": "row wrap",
           "items": [
-            { "key": "automation.toiletLight.hueSensorId" },
             { "key": "automation.toiletLight.minOnMinutes" },
             { "key": "automation.toiletLight.boostMinutes" }
           ]

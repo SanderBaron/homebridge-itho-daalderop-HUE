@@ -5,7 +5,7 @@
   "description": "Homebridge plugin for Itho Daalderop mechanical ventilation with WiFi add-on. Fan control, sensor readings, humidity automation and time scheduling in Apple HomeKit.",
   "license": "MIT",
   "author": {
-    "name": "TODO: your-name-here",
+    "name": "Sander Baron",
     "url": "https://github.com/SanderBaron"
   },
   "contributors": [
@@ -89,6 +89,7 @@
   "dependencies": {
     "@homebridge/plugin-ui-utils": "^2.0.0",
     "mqtt": "^5.10.1",
+    "undici": "^8.4.1",
     "zod": "^3.23.8"
   },
   "release-it": {
@@ -108,9 +109,15 @@
     }
   },
   "lint-staged": {
-    "*.ts": ["prettier --write"],
-    "*.js": ["prettier --write"],
-    "*.json": ["prettier --write"]
+    "*.ts": [
+      "prettier --write"
+    ],
+    "*.js": [
+      "prettier --write"
+    ],
+    "*.json": [
+      "prettier --write"
+    ]
   },
   "husky": {
     "hooks": {

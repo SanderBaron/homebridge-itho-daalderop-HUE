@@ -37,9 +37,12 @@ import {
 import { AirQualitySensorAccessory } from './air-quality-sensor-accessory';
 import { MqttApi } from './api/mqtt';
 import { HttpApi } from './api/http';
+import { HueApi } from './api/hue';
 import { sanitizeStatusPayload } from './utils/api';
 import { HumidityAutomation } from './automations/humidity-automation';
 import { ScheduleEngine } from './automations/schedule-engine';
+import { MirrorHeaterAutomation } from './automations/mirror-heater-automation';
+import { ToiletLightAutomation } from './automations/toilet-light-automation';
 
 export class HomebridgeIthoDaalderop implements DynamicPlatformPlugin {
   public readonly Service: typeof Service = this.api.hap.Service;
@@ -56,7 +59,13 @@ export class HomebridgeIthoDaalderop implements DynamicPlatformPlugin {
 
   private humidityAutomation: HumidityAutomation | null = null;
   private scheduleEngine: ScheduleEngine | null = null;
+  private mirrorHeaterAutomation: MirrorHeaterAutomation | null = null;
+  private toiletLightAutomation: ToiletLightAutomation | null = null;
+  private hueApi: HueApi | null = null;
   private dailyResetTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Polls the Hue sensor for the toilet input-only switch. */
+  private toiletSwitchPollInterval: ReturnType<typeof setInterval> | null = null;
+  private toiletSwitchLastUpdated: string | null = null;
 
   constructor(public readonly log: Logger, config: PlatformConfig, public readonly api: API) {
     this.config = config as ConfigSchema;
@@ -75,6 +84,7 @@ export class HomebridgeIthoDaalderop implements DynamicPlatformPlugin {
     }
 
     this.setupApiClients();
+    this.setupHueApi();
     this.setupAutomations();
     this.registerAccessories();
     this.scheduleDailyReset();
@@ -85,6 +95,12 @@ export class HomebridgeIthoDaalderop implements DynamicPlatformPlugin {
     this.mqttClient?.end();
     this.humidityAutomation?.destroy();
     this.scheduleEngine?.destroy();
+    this.mirrorHeaterAutomation?.destroy();
+    this.toiletLightAutomation?.destroy();
+    if (this.toiletSwitchPollInterval) {
+      clearInterval(this.toiletSwitchPollInterval);
+      this.toiletSwitchPollInterval = null;
+    }
     this.fanAccessory?.destroy();
     if (this.dailyResetTimer) {
       clearTimeout(this.dailyResetTimer);
@@ -129,6 +145,27 @@ export class HomebridgeIthoDaalderop implements DynamicPlatformPlugin {
     }
   }
 
+  private setupHueApi(): void {
+    const hue = this.config.hue;
+    if (!hue?.bridgeIp || !hue?.apiKey) return;
+
+    this.hueApi = new HueApi({
+      bridgeIp: hue.bridgeIp,
+      apiKey: hue.apiKey,
+      logger: this.log,
+      verboseLogging: this.config.verboseLogging,
+    });
+
+    // Fire-and-forget connection test on startup
+    this.hueApi.testConnection().then(result => {
+      if (result.ok) {
+        this.log.info(`[Hue] Verbonden met bridge — ${result.lightsCount} lampen gevonden`);
+      } else {
+        this.log.warn(`[Hue] Verbinding mislukt: ${result.error}`);
+      }
+    }).catch(() => { /* swallow */ });
+  }
+
   private setupAutomations(): void {
     const humCfg = this.config.automation?.humidity;
 
@@ -156,6 +193,89 @@ export class HomebridgeIthoDaalderop implements DynamicPlatformPlugin {
       );
       this.scheduleEngine.start();
     }
+
+    // Mirror heater (Phase 2 — Hue)
+    const mirrorCfg = this.config.automation?.mirrorHeater;
+    if (mirrorCfg?.enabled && mirrorCfg.hueLightId && this.hueApi) {
+      this.mirrorHeaterAutomation = new MirrorHeaterAutomation(
+        {
+          enabled:                  true,
+          hueLightId:               mirrorCfg.hueLightId,
+          hueButtonId:              mirrorCfg.hueButtonId,
+          triggerThreshold:         mirrorCfg.triggerThreshold        ?? 70,
+          dropThreshold:            mirrorCfg.dropThreshold,
+          riseRate:                 mirrorCfg.riseRate                ?? 3,
+          riseWindowSeconds:        mirrorCfg.riseWindowSeconds       ?? 24,
+          triggerDelayMinutes:      mirrorCfg.triggerDelayMinutes     ?? 5,
+          durationMinutes:          mirrorCfg.durationMinutes         ?? 30,
+          manualButtonTimerMinutes: mirrorCfg.manualButtonTimerMinutes ?? 30,
+        },
+        this.hueApi,
+        this.log,
+      );
+      this.mirrorHeaterAutomation.start();
+      this.log.info('[Mirror] Spiegelverwarming automaat gestart');
+    }
+
+    // Toilet light detection (Phase 2 — Hue input-only switch)
+    const toiletCfg = this.config.automation?.toiletLight;
+    if (toiletCfg?.enabled && toiletCfg.hueSensorId && this.hueApi) {
+      this.toiletLightAutomation = new ToiletLightAutomation(
+        {
+          enabled:        true,
+          hueSensorId:    toiletCfg.hueSensorId,
+          minOnMinutes:   toiletCfg.minOnMinutes  ?? 2,
+          boostMinutes:   toiletCfg.boostMinutes  ?? 20,
+        },
+        this.handleToiletSpeedChange.bind(this),
+        this.log,
+      );
+      this.toiletLightAutomation.start();
+      this.startToiletSwitchPoller(toiletCfg.hueSensorId);
+      this.log.info('[Toilet] Toilet-detectie gestart');
+    }
+  }
+
+  /**
+   * Polls the Hue input-only switch sensor every 3 seconds for state changes.
+   * Translates `buttonevent` / `lastupdated` changes into `notifyLightOn()` /
+   * `notifyLightOff()` calls on the toilet automation.
+   *
+   * Polling at 3 s gives ~1–3 s latency — fast enough for a toilet light.
+   * When Hue v2 SSE is available this can be replaced with an event subscription.
+   */
+  private startToiletSwitchPoller(sensorId: string): void {
+    if (!this.hueApi || !this.toiletLightAutomation) return;
+
+    const POLL_MS = 3_000;
+    // buttonevent codes for Friends-of-Hue / Hue Dimmer switches:
+    //   x000 = initial press (on)    x002 = short release (on)
+    //   x001 = hold               x003 = long release (off)
+    // For a simple on/off input switch we treat even hundreds as ON, odd as OFF.
+    // Adjust if your specific switch model uses different codes.
+    const isOnEvent = (code: number): boolean => Math.floor(code / 1000) % 2 === 0;
+
+    this.toiletSwitchPollInterval = setInterval(() => {
+      void this.hueApi!.getSensor(sensorId)
+        .then(sensor => {
+          const { lastupdated, buttonevent } = sensor.state;
+          if (lastupdated === this.toiletSwitchLastUpdated) return; // nothing changed
+          this.toiletSwitchLastUpdated = lastupdated;
+
+          if (buttonevent !== undefined) {
+            if (isOnEvent(buttonevent)) {
+              this.toiletLightAutomation?.notifyLightOn();
+            } else {
+              this.toiletLightAutomation?.notifyLightOff();
+            }
+          }
+        })
+        .catch((err: unknown) => {
+          this.log.debug(
+            `[Toilet] Switch poll fout: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        });
+    }, POLL_MS);
   }
 
   private registerAccessories(): void {
@@ -250,8 +370,15 @@ export class HomebridgeIthoDaalderop implements DynamicPlatformPlugin {
     this.fanAccessory?.handleStatusResponse(payload);
     this.airQualityAccessory?.handleStatusResponse(payload);
 
+    // Internal duct sensor → CVE humidity automation
     if (payload.hum !== null && payload.hum !== undefined) {
       this.humidityAutomation?.update(payload.hum);
+    }
+
+    // External RFT-RV sensor (Indoorhumidity) → mirror heater automation
+    const indoorHum = payload['Indoorhumidity (%)'];
+    if (indoorHum !== null && indoorHum !== undefined) {
+      this.mirrorHeaterAutomation?.update(indoorHum);
     }
   }
 
@@ -260,6 +387,23 @@ export class HomebridgeIthoDaalderop implements DynamicPlatformPlugin {
   private handleAutomationSpeedChange(speed: SupportedVirtualRemoteCommands | 'auto'): void {
     if (speed === 'auto') {
       // If a schedule is active, apply that speed; otherwise return to medium (CO₂ auto)
+      const entry = this.scheduleEngine?.getActiveEntry();
+      this.sendVirtualRemoteCommand(entry ? entry.speed : 'medium');
+    } else {
+      this.sendVirtualRemoteCommand(speed);
+      // Notify mirror heater that a fan boost just started
+      if (speed === 'high') {
+        this.mirrorHeaterAutomation?.onFanBoostStarted();
+      }
+    }
+  }
+
+  private handleToiletSpeedChange(speed: SupportedVirtualRemoteCommands | 'auto'): void {
+    if (this.humidityAutomation?.getState() === 'boosting') {
+      this.log.debug('[Toilet] Humidity boost actief — toilet boost uitgesteld');
+      return; // humidity has priority
+    }
+    if (speed === 'auto') {
       const entry = this.scheduleEngine?.getActiveEntry();
       this.sendVirtualRemoteCommand(entry ? entry.speed : 'medium');
     } else {

@@ -4,1160 +4,398 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Itho Daalderop</title>
-    <style>
-      :root {
-        --bg: #1a1a2e;
-        --card: #16213e;
-        --border: #0f3460;
-        --accent: #e94560;
-        --text: #eaeaea;
-        --muted: #8892b0;
-        --good: #4caf50;
-        --warn: #ff9800;
-        --bad: #f44336;
-        --night: #7c4dff;
-        --input-bg: #0d1626;
-      }
-
-      * { box-sizing: border-box; margin: 0; padding: 0; }
-
-      body {
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-        background: var(--bg);
-        color: var(--text);
-        font-size: 14px;
-      }
-
-      /* ===== TAB BAR ===== */
-      .tab-bar {
-        display: flex;
-        border-bottom: 1px solid var(--border);
-        margin-bottom: 16px;
-        padding: 0 16px;
-        gap: 4px;
-        position: sticky;
-        top: 0;
-        background: var(--bg);
-        z-index: 10;
-      }
-      .tab-btn {
-        background: none;
-        border: none;
-        color: var(--muted);
-        font-size: 13px;
-        font-weight: 600;
-        padding: 12px 16px 10px;
-        cursor: pointer;
-        border-bottom: 3px solid transparent;
-        margin-bottom: -1px;
-        transition: color 0.15s, border-color 0.15s;
-      }
-      .tab-btn:hover { color: var(--text); }
-      .tab-btn.active { color: var(--text); border-bottom-color: var(--accent); }
-
-      /* ===== SHARED CONTENT AREA ===== */
-      .tab-content { padding: 0 16px 16px; }
-
-      /* ===== DASHBOARD STYLES ===== */
-      h2 { font-size: 18px; font-weight: 600; margin-bottom: 16px; }
-
-      .mode-hero {
-        background: var(--card);
-        border: 1px solid var(--border);
-        border-radius: 12px;
-        padding: 20px 16px;
-        text-align: center;
-        margin-bottom: 20px;
-        position: relative;
-      }
-      .mode-hero .mode-label {
-        font-size: 10px; font-weight: 700; text-transform: uppercase;
-        letter-spacing: 0.12em; color: var(--muted); margin-bottom: 10px;
-      }
-      .mode-badge {
-        display: inline-block; font-size: 22px; font-weight: 800;
-        padding: 8px 24px; border-radius: 30px; letter-spacing: 0.02em;
-        margin-bottom: 8px; background: var(--border); color: var(--text);
-      }
-      .mode-badge.good   { background: #1b5e20; color: #a5d6a7; }
-      .mode-badge.warn   { background: #e65100; color: #ffe0b2; }
-      .mode-badge.bad    { background: #7f0000; color: #ef9a9a; }
-      .mode-badge.night  { background: #311b92; color: #ce93d8; }
-      .mode-sub { font-size: 13px; color: var(--muted); }
-      .mode-speed { position: absolute; top: 16px; right: 16px; text-align: right; }
-      .mode-speed .spd-val { font-size: 28px; font-weight: 700; line-height: 1; }
-      .mode-speed .spd-unit { font-size: 11px; color: var(--muted); }
-
-      .grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
-        gap: 10px; margin-bottom: 20px;
-      }
-      .card {
-        background: var(--card); border: 1px solid var(--border);
-        border-radius: 10px; padding: 14px 12px; text-align: center;
-      }
-      .card .label {
-        font-size: 11px; color: var(--muted); text-transform: uppercase;
-        letter-spacing: 0.05em; margin-bottom: 6px;
-      }
-      .card .value { font-size: 26px; font-weight: 700; line-height: 1.1; }
-      .card .unit { font-size: 12px; color: var(--muted); margin-top: 2px; }
-
-      .badge {
-        display: inline-block; padding: 3px 10px; border-radius: 20px;
-        font-size: 12px; font-weight: 600; background: var(--border); color: var(--text);
-      }
-      .badge.good  { background: #1b5e20; color: #a5d6a7; }
-      .badge.warn  { background: #e65100; color: #ffe0b2; }
-      .badge.bad   { background: #b71c1c; color: #ffcdd2; }
-
-      .section-title {
-        font-size: 11px; font-weight: 700; text-transform: uppercase;
-        letter-spacing: 0.08em; color: var(--muted); margin: 20px 0 8px;
-      }
-      .status-row {
-        display: flex; align-items: center; justify-content: space-between;
-        background: var(--card); border: 1px solid var(--border);
-        border-radius: 8px; padding: 10px 14px; margin-bottom: 6px;
-      }
-      .status-row .key { color: var(--muted); }
-      .status-row .val { font-weight: 600; }
-
-      .error-box {
-        background: #2d0000; border: 1px solid var(--bad);
-        border-radius: 8px; padding: 12px 16px; color: #ef9a9a; font-size: 13px;
-      }
-      #refresh-btn {
-        background: var(--accent); color: white; border: none; border-radius: 6px;
-        padding: 8px 18px; font-size: 13px; font-weight: 600; cursor: pointer; margin-top: 4px;
-      }
-      #refresh-btn:hover { opacity: 0.85; }
-      #refresh-btn:disabled { opacity: 0.4; cursor: default; }
-      #last-update { color: var(--muted); font-size: 11px; margin-left: 10px; }
-      .spinner {
-        display: inline-block; width: 14px; height: 14px;
-        border: 2px solid var(--muted); border-top-color: var(--text);
-        border-radius: 50%; animation: spin 0.7s linear infinite;
-        vertical-align: middle; margin-right: 6px;
-      }
-      @keyframes spin { to { transform: rotate(360deg); } }
-      .dot-online  { color: #4caf50; }
-      .dot-offline { color: var(--bad); }
-
-      /* ===== SETTINGS STYLES ===== */
-      .form-section {
-        background: var(--card); border: 1px solid var(--border);
-        border-radius: 10px; padding: 16px; margin-bottom: 12px;
-      }
-      .form-section-title {
-        font-size: 13px; font-weight: 700; color: var(--text);
-        margin-bottom: 14px; display: flex; align-items: center; gap: 8px;
-      }
-      .phase2-badge {
-        font-size: 10px; background: #311b92; color: #ce93d8;
-        padding: 2px 8px; border-radius: 12px; font-weight: 600;
-      }
-
-      .form-row {
-        display: flex; align-items: center;
-        margin-bottom: 10px; gap: 10px;
-      }
-      .form-row:last-child { margin-bottom: 0; }
-      .form-row > label {
-        color: var(--muted); font-size: 13px;
-        min-width: 180px; flex-shrink: 0;
-      }
-      .form-row input[type="text"],
-      .form-row input[type="number"],
-      .form-row input[type="password"],
-      .form-row select {
-        background: var(--input-bg); border: 1px solid var(--border);
-        border-radius: 6px; color: var(--text); padding: 7px 10px;
-        font-size: 13px; flex: 1; min-width: 0;
-      }
-      .form-row input:focus,
-      .form-row select:focus {
-        outline: none; border-color: var(--accent);
-      }
-      .form-row input[type="checkbox"] { display: none; }
-      .toggle-wrap { display: flex; align-items: center; gap: 8px; cursor: pointer; }
-      .toggle {
-        width: 38px; height: 22px; background: var(--border); border-radius: 11px;
-        position: relative; transition: background 0.2s; flex-shrink: 0;
-      }
-      .toggle::after {
-        content: ''; position: absolute; top: 3px; left: 3px;
-        width: 16px; height: 16px; background: white; border-radius: 50%;
-        transition: left 0.2s;
-      }
-      .toggle.on { background: var(--good); }
-      .toggle.on::after { left: 19px; }
-      .toggle-label { font-size: 13px; color: var(--text); }
-
-      .form-hint { font-size: 11px; color: var(--muted); margin-top: 3px; margin-left: 190px; }
-
-      .input-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 10px; }
-      .input-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
-      .input-group label { font-size: 11px; color: var(--muted); margin-bottom: 4px; display: block; }
-      .input-group input,
-      .input-group select {
-        background: var(--input-bg); border: 1px solid var(--border);
-        border-radius: 6px; color: var(--text); padding: 7px 10px;
-        font-size: 13px; width: 100%;
-      }
-      .input-group input:focus,
-      .input-group select:focus { outline: none; border-color: var(--accent); }
-
-      /* Days toggle pills */
-      .days-wrap { display: flex; gap: 5px; flex-wrap: wrap; }
-      .day-pill {
-        display: inline-block; padding: 4px 10px; border-radius: 14px;
-        font-size: 11px; font-weight: 600; cursor: pointer; user-select: none;
-        background: var(--input-bg); border: 1px solid var(--border); color: var(--muted);
-        transition: background 0.15s, color 0.15s, border-color 0.15s;
-      }
-      .day-pill.selected { background: #1565c0; border-color: #1976d2; color: #bbdefb; }
-
-      /* Schedule entry cards */
-      .entry-card {
-        background: var(--input-bg); border: 1px solid var(--border);
-        border-radius: 8px; padding: 12px; margin-bottom: 8px;
-      }
-      .entry-header {
-        display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;
-      }
-      .entry-num { font-size: 12px; font-weight: 700; color: var(--muted); }
-      .entry-del {
-        background: none; border: 1px solid var(--bad); color: var(--bad);
-        border-radius: 5px; padding: 3px 10px; font-size: 12px; cursor: pointer;
-      }
-      .entry-del:hover { background: #2d0000; }
-
-      .add-entry-btn {
-        background: none; border: 1px dashed var(--border); color: var(--muted);
-        border-radius: 7px; padding: 8px; width: 100%; cursor: pointer;
-        font-size: 13px; margin-top: 4px; transition: border-color 0.15s, color 0.15s;
-      }
-      .add-entry-btn:hover { border-color: var(--accent); color: var(--text); }
-
-      .save-bar {
-        position: sticky; bottom: 0; background: var(--bg);
-        border-top: 1px solid var(--border); padding: 12px 16px;
-        display: flex; align-items: center; gap: 12px;
-      }
-      .save-btn {
-        background: var(--accent); color: white; border: none;
-        border-radius: 6px; padding: 9px 24px; font-size: 13px; font-weight: 700;
-        cursor: pointer; transition: opacity 0.15s;
-      }
-      .save-btn:hover { opacity: 0.85; }
-      .save-btn:disabled { opacity: 0.4; cursor: default; }
-      .save-status { font-size: 12px; color: var(--muted); }
-
-      .hidden { display: none !important; }
-    </style>
+    <link rel="stylesheet" href="style.css" />
   </head>
   <body>
+    <main class="container">
+      <header>
+        <h1>Itho Daalderop</h1>
+        <p class="subtitle">
+          Homebridge plugin voor mechanische ventilatie met NRGWatch WiFi add-on.
+        </p>
+      </header>
 
-    <!-- TAB BAR -->
-    <div class="tab-bar">
-      <button class="tab-btn active" onclick="switchTab('dashboard')">📊 Dashboard</button>
-      <button class="tab-btn"        onclick="switchTab('settings')">⚙️ Instellingen</button>
-    </div>
-
-    <!-- ============================= DASHBOARD TAB ============================= -->
-    <div id="tab-dashboard" class="tab-content">
-      <div id="loading"><span class="spinner"></span> Gegevens ophalen van module…</div>
-      <div id="error-area" class="hidden"></div>
-
-      <div id="dashboard" class="hidden">
-        <div class="mode-hero">
-          <div class="mode-speed">
-            <div class="spd-val" id="val-speed">–</div>
-            <div class="spd-unit">%</div>
-          </div>
-          <div class="mode-label">Huidige stand</div>
-          <div class="mode-badge" id="mode-badge">–</div>
-          <div class="mode-sub" id="mode-sub"></div>
-        </div>
-
-        <div class="section-title">Sensoren</div>
-        <div class="grid">
-          <div class="card">
-            <div class="label">Luchtkwaliteit</div>
-            <div id="val-aq" class="badge" style="margin-top:8px;">–</div>
-          </div>
-          <div class="card">
-            <div class="label">CO₂</div>
-            <div class="value" id="val-co2">–</div>
-            <div class="unit">ppm</div>
-          </div>
-          <div class="card">
-            <div class="label">Vochtigheid</div>
-            <div class="value" id="val-hum">–</div>
-            <div class="unit">%</div>
-          </div>
-          <div class="card">
-            <div class="label">Temperatuur</div>
-            <div class="value" id="val-temp">–</div>
-            <div class="unit">°C</div>
-          </div>
-        </div>
-
-        <div class="section-title">Ventilator</div>
-        <div class="status-row">
-          <span class="key">Uitlaatventilator</span>
-          <span class="val"><span id="val-exhfan">–</span> %</span>
-        </div>
-        <div class="status-row">
-          <span class="key">Toerental</span>
-          <span class="val"><span id="val-rpm">–</span> rpm</span>
-        </div>
-        <div class="status-row">
-          <span class="key">Storing</span>
-          <span class="val" id="val-fault">–</span>
-        </div>
-        <div class="status-row">
-          <span class="key">Bedrijfsduur</span>
-          <span class="val" id="val-uptime">–</span>
-        </div>
-        <div class="status-row">
-          <span class="key">Opstartteller</span>
-          <span class="val"><span id="val-startups">–</span> keer</span>
-        </div>
-
-        <div class="section-title">NRG Watch Module</div>
-        <div class="status-row">
-          <span class="key">IP-adres</span>
-          <span class="val" id="info-ip">–</span>
-        </div>
-        <div class="status-row">
-          <span class="key">MQTT Broker</span>
-          <span class="val" id="info-mqtt">–</span>
-        </div>
-        <div class="status-row">
-          <span class="key">Verbinding</span>
-          <span class="val" id="info-status">–</span>
-        </div>
-        <div class="status-row">
-          <span class="key">Huidige snelheid (intern)</span>
-          <span class="val" id="info-speed">–</span>
-        </div>
-        <div class="status-row">
-          <span class="key">Terugvalsnelheid</span>
-          <span class="val" id="info-fallback">–</span>
-        </div>
-        <div class="status-row">
-          <span class="key">CO₂-trend</span>
-          <span class="val" id="info-co2vel">–</span>
-        </div>
+      <!-- ── tab bar ─────────────────────────────────────────────────────── -->
+      <div class="tab-bar">
+        <button class="tab-btn active" data-tab="dashboard">📊 Dashboard</button>
+        <button class="tab-btn"        data-tab="settings">⚙️ Instellingen</button>
       </div>
 
-      <div style="margin-top:16px;">
-        <button id="refresh-btn" onclick="loadDashboard()">Vernieuwen</button>
-        <span id="last-update"></span>
-      </div>
-    </div>
+      <!-- ══════════════════════════ DASHBOARD ══════════════════════════════ -->
+      <div id="tab-dashboard" class="tab-pane">
 
-    <!-- ============================= SETTINGS TAB ============================= -->
-    <div id="tab-settings" class="tab-content hidden">
+        <div id="dash-loading"><span class="spinner"></span> Gegevens ophalen…</div>
+        <div id="dash-error" class="error-box hidden"></div>
 
-      <!-- VERBINDING -->
-      <div class="form-section">
-        <div class="form-section-title">🔌 Verbinding</div>
+        <div id="dash-body" class="hidden">
 
-        <div class="form-row">
-          <label>Protocol</label>
-          <select id="api_protocol">
-            <option value="mqtt">MQTT (aanbevolen)</option>
-            <option value="http">HTTP (polling)</option>
-          </select>
-        </div>
-
-        <div class="input-row-3">
-          <div class="input-group">
-            <label>Broker / device IP</label>
-            <input id="api_ip" type="text" placeholder="192.168.1.10" />
-          </div>
-          <div class="input-group">
-            <label>Poort</label>
-            <input id="api_port" type="number" placeholder="1883" min="1" max="65535" />
-          </div>
-          <div class="input-group">
-            <label>Device IP (dashboard)</label>
-            <input id="api_deviceIp" type="text" placeholder="192.168.1.82" />
-          </div>
-        </div>
-        <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">
-          Bij MQTT: vul bij IP het adres van de broker in en bij Device IP het adres van de NRGWatch (voor het dashboard).
-        </div>
-
-        <div class="input-row-2">
-          <div class="input-group">
-            <label>MQTT gebruikersnaam</label>
-            <input id="api_username" type="text" placeholder="Optioneel" />
-          </div>
-          <div class="input-group">
-            <label>MQTT wachtwoord</label>
-            <input id="api_password" type="password" placeholder="Optioneel" />
-          </div>
-        </div>
-
-        <div class="input-row-2">
-          <div class="input-group">
-            <label>NRGWatch gebruikersnaam</label>
-            <input id="api_deviceUsername" type="text" placeholder="Optioneel" />
-          </div>
-          <div class="input-group">
-            <label>NRGWatch wachtwoord</label>
-            <input id="api_devicePassword" type="password" placeholder="Optioneel" />
-          </div>
-        </div>
-        <div style="font-size:11px;color:var(--muted);">
-          NRGWatch-credentials zijn alleen nodig als authenticatie is ingeschakeld op het apparaat zelf.
-        </div>
-      </div>
-
-      <!-- TURBO -->
-      <div class="form-section">
-        <div class="form-section-title">🔴 Turbo modus</div>
-        <div class="form-row">
-          <label>Duur (minuten)</label>
-          <input id="turbo_durationMinutes" type="number" min="1" max="120" placeholder="20" style="max-width:100px;" />
-        </div>
-        <div style="font-size:11px;color:var(--muted);">
-          De Turbo-schakelaar in HomeKit draait de ventilator op maximale stand en keert na deze tijd automatisch terug naar automatisch.
-        </div>
-      </div>
-
-      <!-- VOCHTIGHEIDSAUTOMAAT -->
-      <div class="form-section">
-        <div class="form-section-title">💧 Vochtigheidsautomaat</div>
-
-        <div class="form-row">
-          <label>Ingeschakeld</label>
-          <label class="toggle-wrap" onclick="toggleSwitch('humidity_enabled')">
-            <span class="toggle" id="toggle-humidity_enabled"></span>
-            <span class="toggle-label" id="toggle-label-humidity_enabled">Uit</span>
-          </label>
-          <input type="checkbox" id="humidity_enabled" />
-        </div>
-
-        <div class="form-row">
-          <label>Sensormodus</label>
-          <select id="humidity_mode" onchange="updateHumidityModeHints()">
-            <option value="badkamer">Badkamer</option>
-            <option value="wasruimte">Wasruimte</option>
-          </select>
-        </div>
-        <div id="humidity-mode-hint" style="font-size:11px;color:var(--muted);margin-bottom:10px;"></div>
-
-        <div class="input-row-2">
-          <div class="input-group">
-            <label id="lbl-boostThreshold">Absolute drempel (%)</label>
-            <input id="humidity_boostThreshold" type="number" min="50" max="100" placeholder="85" />
-          </div>
-          <div class="input-group">
-            <label id="lbl-dropThreshold">Terugkeerdrempel (%)</label>
-            <input id="humidity_dropThreshold" type="number" min="40" max="95" placeholder="82" />
-          </div>
-        </div>
-
-        <!-- Badkamer-only fields -->
-        <div id="badkamer-fields">
-          <div class="input-row-2" style="margin-top:10px;">
-            <div class="input-group">
-              <label>Snelle stijging (%)</label>
-              <input id="humidity_riseRate" type="number" min="0" max="20" placeholder="3" />
+          <!-- mode hero -->
+          <div class="mode-hero">
+            <div class="mode-speed">
+              <div class="spd-val" id="val-speed">–</div>
+              <div class="spd-unit">snelheid</div>
             </div>
-            <div class="input-group">
-              <label>Detectievenster (s)</label>
-              <input id="humidity_riseWindowSeconds" type="number" min="5" max="120" placeholder="24" />
+            <div class="mode-label">Huidige stand</div>
+            <div class="mode-badge default" id="val-mode">–</div>
+            <div class="mode-sub" id="val-mode-sub"></div>
+          </div>
+
+          <!-- sensors grid -->
+          <div class="section-title">Sensoren</div>
+          <div class="metric-grid">
+            <div class="metric-card">
+              <div class="label">Luchtkwaliteit</div>
+              <div id="val-aq" class="badge" style="margin-top:8px">–</div>
+            </div>
+            <div class="metric-card">
+              <div class="label">CO₂</div>
+              <div class="value" id="val-co2">–</div>
+              <div class="unit">ppm</div>
+            </div>
+            <div class="metric-card">
+              <div class="label">Kanaal RV</div>
+              <div class="value" id="val-hum">–</div>
+              <div class="unit">%</div>
+            </div>
+            <div class="metric-card">
+              <div class="label">Kanaal Temp.</div>
+              <div class="value" id="val-temp">–</div>
+              <div class="unit">°C</div>
+            </div>
+            <div class="metric-card">
+              <div class="label">RV badkamer</div>
+              <div class="value" id="val-hum-indoor">–</div>
+              <div class="unit">%</div>
             </div>
           </div>
-          <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">
-            Snelle stijging: boost triggert ook bij een stijging van X% binnen Y seconden — pakt ook een snelle douche. Stel in op 0 om uit te schakelen. Itho spec: 3% / 24s.
+
+          <!-- fan section -->
+          <div class="section-title">Ventilator</div>
+          <div class="status-kv"><span class="key">Uitlaatventilator</span><span class="val"><span id="val-exhfan">–</span> %</span></div>
+          <div class="status-kv"><span class="key">Toerental</span><span class="val"><span id="val-rpm">–</span> rpm</span></div>
+          <div class="status-kv"><span class="key">Storing</span><span class="val" id="val-fault">–</span></div>
+          <div class="status-kv"><span class="key">Bedrijfsduur</span><span class="val" id="val-uptime">–</span></div>
+          <div class="status-kv"><span class="key">Opstartteller</span><span class="val"><span id="val-startups">–</span> ×</span></div>
+
+          <!-- module section -->
+          <div class="section-title">NRGWatch module</div>
+          <div class="status-kv"><span class="key">IP-adres</span><span class="val" id="info-ip">–</span></div>
+          <div class="status-kv"><span class="key">MQTT Broker</span><span class="val" id="info-mqtt">–</span></div>
+          <div class="status-kv"><span class="key">Verbinding</span><span class="val" id="info-status">–</span></div>
+          <div class="status-kv"><span class="key">Interne snelheid</span><span class="val" id="info-speed">–</span></div>
+          <div class="status-kv"><span class="key">Terugvalsnelheid</span><span class="val" id="info-fallback">–</span></div>
+          <div class="status-kv"><span class="key">CO₂-trend</span><span class="val" id="info-co2vel">–</span></div>
+
+        </div><!-- /dash-body -->
+
+        <div style="margin-top:16px;display:flex;align-items:center;gap:12px;">
+          <button id="btn-refresh" type="button" class="secondary">↺ Vernieuwen</button>
+          <span id="last-update" class="muted" style="font-size:12px"></span>
+        </div>
+
+      </div><!-- /tab-dashboard -->
+
+      <!-- ══════════════════════════ SETTINGS ═══════════════════════════════ -->
+      <div id="tab-settings" class="tab-pane hidden">
+
+        <!-- ── Verbinding ─────────────────────────────────────────────────── -->
+        <section class="card">
+          <h2>Verbinding</h2>
+          <div class="form-row">
+            <label for="api_protocol">Protocol</label>
+            <select id="api_protocol">
+              <option value="mqtt">MQTT (aanbevolen)</option>
+              <option value="http">HTTP (polling)</option>
+            </select>
           </div>
-
-          <div class="input-group" style="max-width:200px;">
-            <label>Minimale cooldown (min)</label>
-            <input id="humidity_cooldownMinutes" type="number" min="1" max="120" placeholder="20" />
+          <div class="form-grid three">
+            <label>Broker / device IP<input id="api_ip" type="text" placeholder="192.168.1.10" /></label>
+            <label>Poort<input id="api_port" type="number" placeholder="1883" min="1" max="65535" /></label>
+            <label>Device IP (dashboard)<input id="api_deviceIp" type="text" placeholder="192.168.1.82" /></label>
           </div>
-          <div style="font-size:11px;color:var(--muted);margin-top:6px;">
-            Ventilator blijft minimaal deze tijd op HIGH na het douchen. Lang douchen? Geen probleem — de automaat wacht tot de vochtigheid ook echt gedaald is.
+          <p class="hint">Bij MQTT: vul bij IP het adres van de broker in en bij Device IP het adres van de NRGWatch (voor het dashboard).</p>
+          <div class="form-grid two">
+            <label>MQTT gebruikersnaam<input id="api_username" type="text" placeholder="Optioneel" /></label>
+            <label>MQTT wachtwoord<input id="api_password" type="password" placeholder="Optioneel" /></label>
           </div>
-        </div>
-
-        <!-- Wasruimte-only fields -->
-        <div id="wasruimte-fields" class="hidden">
-          <div class="input-group" style="max-width:200px;margin-top:10px;">
-            <label>Minimum-stand drempel (%)</label>
-            <input id="humidity_minSpeedThreshold" type="number" min="40" max="85" placeholder="75" />
+          <div class="form-grid two">
+            <label>NRGWatch gebruikersnaam<input id="api_deviceUsername" type="text" placeholder="Optioneel" /></label>
+            <label>NRGWatch wachtwoord<input id="api_devicePassword" type="password" placeholder="Optioneel" /></label>
           </div>
-          <div style="font-size:11px;color:var(--muted);margin-top:6px;">
-            Drie zones: onder minimum-drempel → laag, tussen drempels → auto, boven absolute drempel → hoog. Geen cooldown.
-          </div>
-        </div>
-      </div>
+        </section>
 
-      <!-- TIJDSCHEMA -->
-      <div class="form-section">
-        <div class="form-section-title">🕐 Tijdschema-overrides</div>
+        <!-- ── Philips Hue Bridge ─────────────────────────────────────────── -->
+        <section class="card">
+          <h2>Philips Hue Bridge</h2>
+          <p class="hint">
+            Koppel je Hue Bridge voor spiegelverwarming en toilet-detectie.
+            Discovery gebruikt Philips' cloud-endpoint; als dat niet werkt vul dan het IP handmatig in.
+          </p>
 
-        <div class="form-row" style="margin-bottom:14px;">
-          <label>Ingeschakeld</label>
-          <label class="toggle-wrap" onclick="toggleSwitch('schedule_enabled')">
-            <span class="toggle" id="toggle-schedule_enabled"></span>
-            <span class="toggle-label" id="toggle-label-schedule_enabled">Uit</span>
-          </label>
-          <input type="checkbox" id="schedule_enabled" />
-        </div>
-
-        <div id="schedule-entries"></div>
-        <button class="add-entry-btn" onclick="addScheduleEntry()">＋ Tijdvenster toevoegen</button>
-      </div>
-
-      <!-- PHILIPS HUE (PHASE 2) -->
-      <div class="form-section">
-        <div class="form-section-title">
-          💡 Philips Hue
-          <span class="phase2-badge">Phase 2</span>
-        </div>
-        <div class="input-row-2">
-          <div class="input-group">
-            <label>Bridge IP-adres</label>
-            <input id="hue_bridgeIp" type="text" placeholder="192.168.1.16" />
-          </div>
-          <div class="input-group">
-            <label>API-sleutel</label>
-            <input id="hue_apiKey" type="text" placeholder="xxxxxxxxxxxxxxxxxxxxxxxx" />
-          </div>
-        </div>
-        <div style="font-size:11px;color:var(--muted);">
-          Hue Bridge voor spiegelverwarming en toilet-detectie. Alvast invullen als de bridge er al is.
-        </div>
-      </div>
-
-      <!-- SPIEGELVERWARMING (PHASE 2) -->
-      <div class="form-section">
-        <div class="form-section-title">
-          🪞 Spiegelverwarming
-          <span class="phase2-badge">Phase 2</span>
-        </div>
-
-        <div class="form-row">
-          <label>Ingeschakeld</label>
-          <label class="toggle-wrap" onclick="toggleSwitch('mirrorHeater_enabled')">
-            <span class="toggle" id="toggle-mirrorHeater_enabled"></span>
-            <span class="toggle-label" id="toggle-label-mirrorHeater_enabled">Uit</span>
-          </label>
-          <input type="checkbox" id="mirrorHeater_enabled" />
-        </div>
-
-        <div class="input-row-2">
-          <div class="input-group">
-            <label>Hue lamp-ID</label>
-            <input id="mirrorHeater_hueLightId" type="text" placeholder="bijv. 5 of UUID" />
-          </div>
-          <div class="input-group">
-            <label>Brandtijd (min)</label>
-            <input id="mirrorHeater_durationMinutes" type="number" min="1" max="120" placeholder="30" />
-          </div>
-        </div>
-        <div style="font-size:11px;color:var(--muted);">
-          Stuurt een Hue-lamp (spiegelverwarming) aan op basis van de vochtigheid in de badkamer.
-        </div>
-      </div>
-
-      <!-- TOILET-VENTILATIE (PHASE 2) -->
-      <div class="form-section">
-        <div class="form-section-title">
-          🚽 Toilet-ventilatie
-          <span class="phase2-badge">Phase 2</span>
-        </div>
-
-        <div class="form-row">
-          <label>Ingeschakeld</label>
-          <label class="toggle-wrap" onclick="toggleSwitch('toiletLight_enabled')">
-            <span class="toggle" id="toggle-toiletLight_enabled"></span>
-            <span class="toggle-label" id="toggle-label-toiletLight_enabled">Uit</span>
-          </label>
-          <input type="checkbox" id="toiletLight_enabled" />
-        </div>
-
-        <div class="input-row-3">
-          <div class="input-group">
-            <label>Hue sensor/knop ID</label>
-            <input id="toiletLight_hueSensorId" type="text" placeholder="bijv. 12 of UUID" />
-          </div>
-          <div class="input-group">
-            <label>Min. brandduur (min)</label>
-            <input id="toiletLight_minOnMinutes" type="number" min="1" max="30" placeholder="2" />
-          </div>
-          <div class="input-group">
-            <label>CVE boost-duur (min)</label>
-            <input id="toiletLight_boostMinutes" type="number" min="1" max="120" placeholder="20" />
-          </div>
-        </div>
-        <div style="font-size:11px;color:var(--muted);">
-          Detecteert het toiletlicht via een Hue-schakelaar en draait de CVE op maximale stand zolang als ingesteld.
-        </div>
-      </div>
-
-      <!-- DAGELIJKSE RESET -->
-      <div class="form-section">
-        <div class="form-section-title">🔁 Dagelijkse reset</div>
-        <div class="form-row">
-          <label>Ingeschakeld</label>
-          <label class="toggle-wrap" onclick="toggleSwitch('dailyReset_enabled')">
-            <span class="toggle" id="toggle-dailyReset_enabled"></span>
-            <span class="toggle-label" id="toggle-label-dailyReset_enabled">Uit</span>
-          </label>
-          <input type="checkbox" id="dailyReset_enabled" />
-        </div>
-        <div class="form-row">
-          <label>Tijdstip (UU:MM)</label>
-          <input id="dailyReset_time" type="text" placeholder="02:00" style="max-width:100px;" />
-        </div>
-        <div style="font-size:11px;color:var(--muted);">
-          Elke nacht stuurt de plugin automatisch het commando 'automatisch' — veiligheidsnet zodat de CVE nooit per ongeluk voor langere tijd in een ongewenste stand blijft staan.
-        </div>
-      </div>
-
-      <!-- OVERIG -->
-      <div class="form-section">
-        <div class="form-section-title">🔧 Overig</div>
-        <div class="form-row">
-          <label>Uitgebreide logging</label>
-          <label class="toggle-wrap" onclick="toggleSwitch('verboseLogging')">
-            <span class="toggle" id="toggle-verboseLogging"></span>
-            <span class="toggle-label" id="toggle-label-verboseLogging">Uit</span>
-          </label>
-          <input type="checkbox" id="verboseLogging" />
-        </div>
-      </div>
-
-      <!-- SAVE BAR -->
-      <div class="save-bar">
-        <button class="save-btn" id="save-btn" onclick="saveSettings()">💾 Opslaan</button>
-        <span class="save-status" id="save-status"></span>
-      </div>
-
-    </div><!-- /tab-settings -->
-
-    <script>
-      // ============================================================
-      // TAB SWITCHING
-      // ============================================================
-      function switchTab(tab) {
-        document.querySelectorAll('.tab-btn').forEach((b, i) => {
-          b.classList.toggle('active', ['dashboard','settings'][i] === tab);
-        });
-        document.getElementById('tab-dashboard').classList.toggle('hidden', tab !== 'dashboard');
-        document.getElementById('tab-settings').classList.toggle('hidden', tab !== 'settings');
-        if (tab === 'settings' && !settingsLoaded) loadSettings();
-      }
-
-      // ============================================================
-      // TOGGLE SWITCHES
-      // ============================================================
-      function toggleSwitch(id) {
-        const cb = document.getElementById(id);
-        cb.checked = !cb.checked;
-        updateToggleUI(id);
-      }
-      function setToggle(id, val) {
-        const cb = document.getElementById(id);
-        if (cb) { cb.checked = !!val; updateToggleUI(id); }
-      }
-      function updateToggleUI(id) {
-        const cb = document.getElementById(id);
-        const tog = document.getElementById('toggle-' + id);
-        const lbl = document.getElementById('toggle-label-' + id);
-        if (!cb || !tog) return;
-        const on = cb.checked;
-        tog.classList.toggle('on', on);
-        if (lbl) lbl.textContent = on ? 'Aan' : 'Uit';
-      }
-
-      // ============================================================
-      // SCHEDULE ENTRIES
-      // ============================================================
-      const DAYS = [
-        { val: 'mon', lbl: 'Ma' }, { val: 'tue', lbl: 'Di' },
-        { val: 'wed', lbl: 'Wo' }, { val: 'thu', lbl: 'Do' },
-        { val: 'fri', lbl: 'Vr' }, { val: 'sat', lbl: 'Za' },
-        { val: 'sun', lbl: 'Zo' },
-      ];
-
-      let scheduleEntries = [];
-
-      function renderScheduleEntries() {
-        const container = document.getElementById('schedule-entries');
-        container.innerHTML = '';
-        scheduleEntries.forEach((entry, idx) => {
-          const card = document.createElement('div');
-          card.className = 'entry-card';
-          card.innerHTML = `
-            <div class="entry-header">
-              <span class="entry-num">Tijdvenster ${idx + 1}</span>
-              <button class="entry-del" onclick="removeScheduleEntry(${idx})">✕ Verwijderen</button>
+          <div class="form-row">
+            <label for="hue_bridgeIp">Bridge IP</label>
+            <div class="input-with-button">
+              <input type="text" id="hue_bridgeIp" placeholder="192.168.x.x"
+                     autocomplete="off" spellcheck="false" />
+              <button type="button" id="btn-discover" class="secondary">Zoeken</button>
             </div>
-            <div class="input-group" style="margin-bottom:10px;">
-              <label>Label</label>
-              <input type="text" class="entry-label" data-idx="${idx}"
-                     value="${escHtml(entry.label || '')}" placeholder="bijv. Ochtend luchten"
-                     oninput="updateEntry(${idx},'label',this.value)" />
+          </div>
+
+          <div id="discovery-results" class="discovery-results hidden"></div>
+
+          <div class="status-row-inline">
+            <span>Bridge status</span>
+            <span class="status-inline">
+              <span id="hue-status-dot" class="status-dot status-unknown"></span>
+              <span id="hue-status-text">Niet verbonden</span>
+            </span>
+            <button type="button" id="btn-probe" class="secondary small">Test verbinding</button>
+          </div>
+
+          <div class="form-row">
+            <label for="hue_apiKey">API-sleutel</label>
+            <div class="input-with-button">
+              <input type="text" id="hue_apiKey" placeholder="(wordt ingevuld na koppelen)" readonly />
+              <button type="button" id="btn-pair" class="primary">Koppelen</button>
             </div>
-            <div style="margin-bottom:10px;">
-              <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">Dagen</div>
-              <div class="days-wrap" id="days-${idx}">
-                ${DAYS.map(d => `
-                  <span class="day-pill${(entry.days||[]).includes(d.val) ? ' selected' : ''}"
-                        onclick="toggleDay(${idx},'${d.val}',this)">${d.lbl}</span>
-                `).join('')}
-              </div>
+            <p class="hint">Druk op de ronde knop op je Hue Bridge en klik daarna <strong>direct</strong> op Koppelen.</p>
+            <div id="pair-status" class="pair-status hidden"></div>
+          </div>
+
+          <!-- Detected lights -->
+          <details class="collapsible">
+            <summary class="collapsible-summary">
+              <span>Gevonden lampen <span id="hue-lights-count" class="muted"></span></span>
+              <span class="collapsible-hint muted">klik om te openen</span>
+            </summary>
+            <div class="collapsible-actions">
+              <button type="button" id="btn-refresh-hue" class="secondary small">↺ Vernieuwen</button>
             </div>
-            <div class="input-row-3">
-              <div class="input-group">
-                <label>Van (UU:MM)</label>
-                <input type="text" value="${escHtml(entry.from||'')}" placeholder="07:00"
-                       oninput="updateEntry(${idx},'from',this.value)" />
-              </div>
-              <div class="input-group">
-                <label>Tot (UU:MM)</label>
-                <input type="text" value="${escHtml(entry.to||'')}" placeholder="08:00"
-                       oninput="updateEntry(${idx},'to',this.value)" />
-              </div>
-              <div class="input-group">
-                <label>Snelheid</label>
-                <select onchange="updateEntry(${idx},'speed',this.value)">
-                  <option value="low"    ${entry.speed==='low'    ?'selected':''}>Laag</option>
-                  <option value="medium" ${entry.speed==='medium' ?'selected':''}>Middel</option>
-                  <option value="high"   ${entry.speed==='high'   ?'selected':''}>Hoog</option>
-                </select>
-              </div>
+            <div id="hue-lights-list" class="item-list">
+              <p class="empty">Koppel de bridge om de lampen te zien.</p>
             </div>
-          `;
-          container.appendChild(card);
-        });
-      }
+          </details>
 
-      function toggleDay(idx, day, el) {
-        const entry = scheduleEntries[idx];
-        if (!entry.days) entry.days = [];
-        if (entry.days.includes(day)) {
-          entry.days = entry.days.filter(d => d !== day);
-          el.classList.remove('selected');
-        } else {
-          entry.days.push(day);
-          el.classList.add('selected');
-        }
-      }
+          <!-- Detected sensors -->
+          <details class="collapsible" style="margin-top:8px;">
+            <summary class="collapsible-summary">
+              <span>Gevonden schakelaars / sensoren <span id="hue-sensors-count" class="muted"></span></span>
+              <span class="collapsible-hint muted">klik om te openen</span>
+            </summary>
+            <div id="hue-sensors-list" class="item-list">
+              <p class="empty">Koppel de bridge om de schakelaars te zien.</p>
+            </div>
+          </details>
+        </section>
 
-      function updateEntry(idx, key, val) {
-        scheduleEntries[idx][key] = val;
-      }
+        <!-- ── Turbo ──────────────────────────────────────────────────────── -->
+        <section class="card">
+          <h2>Turbo modus</h2>
+          <div class="form-row" style="max-width:200px;">
+            <label for="turbo_durationMinutes">Duur (minuten)
+              <input id="turbo_durationMinutes" type="number" min="1" max="120" placeholder="20" />
+            </label>
+          </div>
+          <p class="hint">De Turbo-schakelaar in HomeKit draait de ventilator op maximaal en keert na deze tijd automatisch terug.</p>
+        </section>
 
-      function addScheduleEntry() {
-        scheduleEntries.push({ label: '', days: [], from: '', to: '', speed: 'medium' });
-        renderScheduleEntries();
-      }
+        <!-- ── Vochtigheidsautomaat ───────────────────────────────────────── -->
+        <section class="card">
+          <h2>Vochtigheidsautomaat</h2>
 
-      function removeScheduleEntry(idx) {
-        scheduleEntries.splice(idx, 1);
-        renderScheduleEntries();
-      }
+          <div class="form-row" style="margin-bottom:14px;">
+            <label class="toggle-wrap" data-toggle="humidity_enabled">
+              <span class="toggle-pill" id="toggle-humidity_enabled"></span>
+              <span id="toggle-label-humidity_enabled">Uit</span>
+            </label>
+            <input type="checkbox" id="humidity_enabled" class="toggle-cb" />
+          </div>
 
-      function escHtml(s) {
-        return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
-      }
+          <div class="form-row">
+            <label for="humidity_mode">Sensormodus</label>
+            <select id="humidity_mode">
+              <option value="badkamer">Badkamer</option>
+              <option value="wasruimte">Wasruimte</option>
+            </select>
+          </div>
+          <p id="humidity-mode-hint" class="hint"></p>
 
-      // ============================================================
-      // SETTINGS — LOAD
-      // ============================================================
-      let settingsLoaded = false;
+          <div class="form-grid two">
+            <label>
+              <span id="lbl-boostThreshold">Absolute drempel (%)</span>
+              <input id="humidity_boostThreshold" type="number" min="50" max="100" placeholder="85" />
+            </label>
+            <label>
+              <span id="lbl-dropThreshold">Terugkeerdrempel (%)</span>
+              <input id="humidity_dropThreshold" type="number" min="40" max="95" placeholder="82" />
+            </label>
+          </div>
 
-      async function loadSettings() {
-        try {
-          const configs = await homebridge.getPluginConfig();
-          const cfg = (Array.isArray(configs) ? configs[0] : configs) || {};
+          <div id="badkamer-fields">
+            <div class="form-grid two" style="margin-top:8px;">
+              <label>Snelle stijging (%)
+                <input id="humidity_riseRate" type="number" min="0" max="20" placeholder="3" />
+              </label>
+              <label>Detectievenster (s)
+                <input id="humidity_riseWindowSeconds" type="number" min="5" max="120" placeholder="24" />
+              </label>
+            </div>
+            <p class="hint">Boost triggert ook bij stijging van X% binnen Y seconden. Stel in op 0 om uit te schakelen. Itho spec: 3% / 24s.</p>
+            <label style="max-width:200px;">Minimale cooldown (min)
+              <input id="humidity_cooldownMinutes" type="number" min="1" max="120" placeholder="20" />
+            </label>
+          </div>
 
-          // Verbinding
-          setVal('api_protocol',      cfg.api?.protocol  || 'mqtt');
-          setVal('api_ip',            cfg.api?.ip         || '');
-          setVal('api_port',          cfg.api?.port       || 1883);
-          setVal('api_deviceIp',      cfg.api?.deviceIp   || '');
-          setVal('api_username',      cfg.api?.username   || '');
-          setVal('api_password',      cfg.api?.password   || '');
-          setVal('api_deviceUsername',cfg.api?.deviceUsername || '');
-          setVal('api_devicePassword',cfg.api?.devicePassword || '');
+          <div id="wasruimte-fields" class="hidden">
+            <label style="max-width:200px;margin-top:8px;">Minimum-stand drempel (%)
+              <input id="humidity_minSpeedThreshold" type="number" min="40" max="85" placeholder="75" />
+            </label>
+            <p class="hint">Drie zones: onder minimum-drempel → laag, tussen drempels → auto, boven absolute drempel → hoog.</p>
+          </div>
+        </section>
 
-          // Turbo
-          setVal('turbo_durationMinutes', cfg.automation?.turbo?.durationMinutes ?? 20);
+        <!-- ── Tijdschema ─────────────────────────────────────────────────── -->
+        <section class="card">
+          <h2>Tijdschema-overrides</h2>
 
-          // Vochtigheid
-          setToggle('humidity_enabled', cfg.automation?.humidity?.enabled ?? true);
-          setVal('humidity_mode',                cfg.automation?.humidity?.mode                ?? 'badkamer');
-          setVal('humidity_boostThreshold',      cfg.automation?.humidity?.boostThreshold      ?? 85);
-          setVal('humidity_dropThreshold',       cfg.automation?.humidity?.dropThreshold       ?? 82);
-          setVal('humidity_cooldownMinutes',     cfg.automation?.humidity?.cooldownMinutes     ?? 20);
-          setVal('humidity_riseRate',            cfg.automation?.humidity?.riseRate            ?? 3);
-          setVal('humidity_riseWindowSeconds',   cfg.automation?.humidity?.riseWindowSeconds   ?? 24);
-          setVal('humidity_minSpeedThreshold',   cfg.automation?.humidity?.minSpeedThreshold   ?? 75);
-          updateHumidityModeHints();
+          <div class="form-row" style="margin-bottom:14px;">
+            <label class="toggle-wrap" data-toggle="schedule_enabled">
+              <span class="toggle-pill" id="toggle-schedule_enabled"></span>
+              <span id="toggle-label-schedule_enabled">Uit</span>
+            </label>
+            <input type="checkbox" id="schedule_enabled" class="toggle-cb" />
+          </div>
 
-          // Schema
-          setToggle('schedule_enabled', cfg.automation?.schedule?.enabled ?? false);
-          scheduleEntries = (cfg.automation?.schedule?.entries || []).map(e => ({ ...e, days: [...(e.days||[])] }));
-          renderScheduleEntries();
+          <div id="schedule-entries" class="dynamic-list"></div>
+          <button type="button" id="btn-add-schedule" class="secondary"
+                  style="margin-top:8px;width:100%;">＋ Tijdvenster toevoegen</button>
+        </section>
 
-          // Hue
-          setVal('hue_bridgeIp', cfg.hue?.bridgeIp || '');
-          setVal('hue_apiKey',   cfg.hue?.apiKey   || '');
+        <!-- ── Spiegelverwarming ──────────────────────────────────────────── -->
+        <section class="card">
+          <h2>Spiegelverwarming</h2>
+          <p class="hint">Stuurt een Hue-lamp (spiegelverwarming) aan op basis van de externe RFT-RV vochtigheid.</p>
 
-          // Spiegelverwarming
-          setToggle('mirrorHeater_enabled', cfg.automation?.mirrorHeater?.enabled ?? false);
-          setVal('mirrorHeater_hueLightId',      cfg.automation?.mirrorHeater?.hueLightId      || '');
-          setVal('mirrorHeater_durationMinutes', cfg.automation?.mirrorHeater?.durationMinutes ?? 30);
+          <div class="form-row" style="margin-bottom:14px;">
+            <label class="toggle-wrap" data-toggle="mirrorHeater_enabled">
+              <span class="toggle-pill" id="toggle-mirrorHeater_enabled"></span>
+              <span id="toggle-label-mirrorHeater_enabled">Uit</span>
+            </label>
+            <input type="checkbox" id="mirrorHeater_enabled" class="toggle-cb" />
+          </div>
 
-          // Toilet-ventilatie
-          setToggle('toiletLight_enabled', cfg.automation?.toiletLight?.enabled ?? false);
-          setVal('toiletLight_hueSensorId',   cfg.automation?.toiletLight?.hueSensorId   || '');
-          setVal('toiletLight_minOnMinutes',  cfg.automation?.toiletLight?.minOnMinutes  ?? 2);
-          setVal('toiletLight_boostMinutes',  cfg.automation?.toiletLight?.boostMinutes  ?? 20);
+          <div class="form-grid two">
+            <label>Hue lamp (spiegelverwarming)
+              <select id="mirrorHeater_hueLightId">
+                <option value="">(selecteer lamp…)</option>
+              </select>
+            </label>
+            <label>Hue knop (handmatig, optioneel)
+              <select id="mirrorHeater_hueButtonId">
+                <option value="">(geen)</option>
+              </select>
+            </label>
+          </div>
+          <div class="form-grid two">
+            <label>Inschakeldrempel RFT-RV (%)
+              <input id="mirrorHeater_triggerThreshold" type="number" min="50" max="100" placeholder="70" />
+            </label>
+            <label>Annuleerdrempel (%, optioneel)
+              <input id="mirrorHeater_dropThreshold" type="number" min="40" max="95" placeholder="leeg = uit" />
+            </label>
+          </div>
+          <p class="hint">Annuleerdrempel: alleen gebruikt tijdens de vertraging na de fan-boost — is de RFT-RV dan alweer onder deze waarde, dan gaat de spiegel niet aan. Verlengt de brandtijd niet. Leeg laten = uit.</p>
+          <div class="form-grid two">
+            <label>Snelle stijging (%)
+              <input id="mirrorHeater_riseRate" type="number" min="0" max="20" step="0.5" placeholder="3" />
+            </label>
+            <label>Detectievenster (s)
+              <input id="mirrorHeater_riseWindowSeconds" type="number" min="5" max="120" placeholder="24" />
+            </label>
+          </div>
+          <p class="hint">Spiegel triggert ook bij stijging van X% binnen Y seconden — ook als de inschakeldrempel nog niet bereikt is. Stel in op 0 om uit te schakelen. Itho spec: 3% / 24s.</p>
+          <div class="form-grid two">
+            <label>Brandtijd na inschakelen (min)
+              <input id="mirrorHeater_durationMinutes" type="number" min="1" max="120" placeholder="30" />
+            </label>
+            <label>Vertraging na fan-boost (min)
+              <input id="mirrorHeater_triggerDelayMinutes" type="number" min="0" max="60" placeholder="5" />
+            </label>
+          </div>
+        </section>
 
-          // Dagelijkse reset
-          setToggle('dailyReset_enabled', cfg.dailyReset?.enabled ?? true);
-          setVal('dailyReset_time', cfg.dailyReset?.time || '02:00');
+        <!-- ── Toilet-ventilatie ─────────────────────────────────────────── -->
+        <section class="card">
+          <h2>Toilet-ventilatie</h2>
+          <p class="hint">Detecteert het toiletlicht via een Hue input-only schakelaar en draait de CVE op maximale stand.</p>
 
-          // Overig
-          setToggle('verboseLogging', cfg.verboseLogging ?? false);
+          <div class="form-row" style="margin-bottom:14px;">
+            <label class="toggle-wrap" data-toggle="toiletLight_enabled">
+              <span class="toggle-pill" id="toggle-toiletLight_enabled"></span>
+              <span id="toggle-label-toiletLight_enabled">Uit</span>
+            </label>
+            <input type="checkbox" id="toiletLight_enabled" class="toggle-cb" />
+          </div>
 
-          settingsLoaded = true;
-        } catch (err) {
-          document.getElementById('save-status').textContent = '⚠ Kon instellingen niet laden: ' + err.message;
-        }
-      }
+          <div class="form-row">
+            <label>Hue schakelaar (toilet)
+              <select id="toiletLight_hueSensorId">
+                <option value="">(selecteer schakelaar…)</option>
+              </select>
+            </label>
+          </div>
+          <div class="form-grid two">
+            <label>Min. brandduur voor boost (min)
+              <input id="toiletLight_minOnMinutes" type="number" min="1" max="30" placeholder="2" />
+            </label>
+            <label>CVE boost-duur (min)
+              <input id="toiletLight_boostMinutes" type="number" min="1" max="120" placeholder="20" />
+            </label>
+          </div>
+        </section>
 
-      function setVal(id, val) {
-        const el = document.getElementById(id);
-        if (el) el.value = val;
-      }
+        <!-- ── Dagelijkse reset ───────────────────────────────────────────── -->
+        <section class="card">
+          <h2>Dagelijkse reset</h2>
+          <p class="hint">Elke nacht stuurt de plugin het commando 'automatisch' — veiligheidsnet zodat de CVE nooit per ongeluk in een handmatige stand blijft staan.</p>
 
-      // ============================================================
-      // HUMIDITY MODE HELPERS
-      // ============================================================
-      function updateHumidityModeHints() {
-        const mode = getVal('humidity_mode');
-        const isBadkamer = mode !== 'wasruimte';
-        document.getElementById('badkamer-fields').classList.toggle('hidden', !isBadkamer);
-        document.getElementById('wasruimte-fields').classList.toggle('hidden', isBadkamer);
-        const hint = document.getElementById('humidity-mode-hint');
-        if (isBadkamer) {
-          hint.textContent = 'Badkamer: absolute drempel + snelle stijging + minimale cooldown. Ventilator keert pas terug naar auto als de vochtigheid ook echt gezakt is.';
-          document.getElementById('lbl-boostThreshold').textContent = 'Absolute drempel (%)';
-          document.getElementById('lbl-dropThreshold').textContent  = 'Terugkeerdrempel (%)';
-        } else {
-          hint.textContent = 'Wasruimte: drie zones. Onder minimum-drempel → laag. Boven absolute drempel → hoog. Geen cooldown.';
-          document.getElementById('lbl-boostThreshold').textContent = 'Hoog-drempel (%)';
-          document.getElementById('lbl-dropThreshold').textContent  = 'Laag→auto drempel (%)';
-        }
-      }
+          <div class="form-row" style="margin-bottom:14px;">
+            <label class="toggle-wrap" data-toggle="dailyReset_enabled">
+              <span class="toggle-pill" id="toggle-dailyReset_enabled"></span>
+              <span id="toggle-label-dailyReset_enabled">Uit</span>
+            </label>
+            <input type="checkbox" id="dailyReset_enabled" class="toggle-cb" />
+          </div>
+          <div class="form-row" style="max-width:120px;">
+            <label for="dailyReset_time">Tijdstip (UU:MM)
+              <input id="dailyReset_time" type="text" placeholder="02:00" />
+            </label>
+          </div>
+        </section>
 
-      function buildHumidityConfig() {
-        const mode = getVal('humidity_mode') || 'badkamer';
-        const isBadkamer = mode !== 'wasruimte';
-        const cfg = {
-          enabled:        getChecked('humidity_enabled'),
-          mode,
-          boostThreshold: parseInt(getVal('humidity_boostThreshold')) || 85,
-          dropThreshold:  parseInt(getVal('humidity_dropThreshold'))  || 82,
-        };
-        if (isBadkamer) {
-          Object.assign(cfg, {
-            cooldownMinutes:   parseInt(getVal('humidity_cooldownMinutes'))   || 20,
-            riseRate:          parseFloat(getVal('humidity_riseRate'))        || 3,
-            riseWindowSeconds: parseInt(getVal('humidity_riseWindowSeconds')) || 24,
-          });
-        } else {
-          Object.assign(cfg, {
-            minSpeedThreshold: parseInt(getVal('humidity_minSpeedThreshold')) || 75,
-          });
-        }
-        return cfg;
-      }
+        <!-- ── Overig ─────────────────────────────────────────────────────── -->
+        <section class="card">
+          <h2>Overig</h2>
+          <div class="form-row">
+            <label class="toggle-wrap" data-toggle="verboseLogging">
+              <span class="toggle-pill" id="toggle-verboseLogging"></span>
+              <span id="toggle-label-verboseLogging">Uit</span>
+            </label>
+            <input type="checkbox" id="verboseLogging" class="toggle-cb" />
+            <span class="hint" style="margin-top:4px;">Uitgebreide logging (voor probleemoplossing)</span>
+          </div>
+        </section>
 
-      // ============================================================
-      // SETTINGS — SAVE
-      // ============================================================
-      async function saveSettings() {
-        const btn = document.getElementById('save-btn');
-        const status = document.getElementById('save-status');
-        btn.disabled = true;
-        status.textContent = 'Bezig met opslaan…';
+      </div><!-- /tab-settings -->
 
-        try {
-          // Get existing config to preserve fields we don't touch (e.g. platform, name, _bridge)
-          const configs = await homebridge.getPluginConfig();
-          const existing = (Array.isArray(configs) ? configs[0] : configs) || {};
+    </main>
 
-          const cfg = { ...existing };
-          cfg.platform = 'HomebridgeIthoDaalderop';
-          cfg.name     = existing.name || 'Itho Daalderop';
+    <!-- ── sticky save bar (settings only) ── -->
+    <footer class="action-bar" id="save-bar" style="display:none;">
+      <span id="save-feedback" class="save-feedback"></span>
+      <button type="button" class="primary" id="save-btn">💾 Opslaan</button>
+    </footer>
 
-          // API
-          cfg.api = {
-            protocol: getVal('api_protocol') || 'mqtt',
-            ip:       getVal('api_ip'),
-            port:     parseInt(getVal('api_port')) || 1883,
-          };
-          const devIp   = getVal('api_deviceIp');
-          const mqttU   = getVal('api_username');
-          const mqttP   = getVal('api_password');
-          const devU    = getVal('api_deviceUsername');
-          const devP    = getVal('api_devicePassword');
-          if (devIp) cfg.api.deviceIp        = devIp;
-          if (mqttU) cfg.api.username        = mqttU;
-          if (mqttP) cfg.api.password        = mqttP;
-          if (devU)  cfg.api.deviceUsername  = devU;
-          if (devP)  cfg.api.devicePassword  = devP;
-
-          // Automation
-          cfg.automation = {
-            turbo: {
-              durationMinutes: parseInt(getVal('turbo_durationMinutes')) || 20,
-            },
-            humidity: buildHumidityConfig(),
-            schedule: {
-              enabled: getChecked('schedule_enabled'),
-              entries: scheduleEntries
-                .filter(e => e.label || (e.days && e.days.length) || e.from || e.to)
-                .map(e => ({
-                  label: e.label || '',
-                  days:  e.days  || [],
-                  from:  e.from  || '',
-                  to:    e.to    || '',
-                  speed: e.speed || 'medium',
-                })),
-            },
-          };
-
-          // Mirror heater
-          const mhEnabled   = getChecked('mirrorHeater_enabled');
-          const mhLightId   = getVal('mirrorHeater_hueLightId');
-          const mhDuration  = parseInt(getVal('mirrorHeater_durationMinutes')) || 30;
-          if (mhEnabled || mhLightId) {
-            cfg.automation.mirrorHeater = { enabled: mhEnabled, durationMinutes: mhDuration };
-            if (mhLightId) cfg.automation.mirrorHeater.hueLightId = mhLightId;
-          }
-
-          // Toilet light
-          const tlEnabled   = getChecked('toiletLight_enabled');
-          const tlSensorId  = getVal('toiletLight_hueSensorId');
-          const tlMinOn     = parseInt(getVal('toiletLight_minOnMinutes'))  || 2;
-          const tlBoost     = parseInt(getVal('toiletLight_boostMinutes'))  || 20;
-          if (tlEnabled || tlSensorId) {
-            cfg.automation.toiletLight = {
-              enabled: tlEnabled, minOnMinutes: tlMinOn, boostMinutes: tlBoost,
-            };
-            if (tlSensorId) cfg.automation.toiletLight.hueSensorId = tlSensorId;
-          }
-
-          // Hue
-          const hueIp  = getVal('hue_bridgeIp');
-          const hueKey = getVal('hue_apiKey');
-          if (hueIp || hueKey) {
-            cfg.hue = {};
-            if (hueIp)  cfg.hue.bridgeIp = hueIp;
-            if (hueKey) cfg.hue.apiKey   = hueKey;
-          } else {
-            delete cfg.hue;
-          }
-
-          // Dagelijkse reset
-          const resetTime = getVal('dailyReset_time') || '02:00';
-          cfg.dailyReset = {
-            enabled: getChecked('dailyReset_enabled'),
-            time: resetTime,
-          };
-
-          // Overig
-          cfg.verboseLogging = getChecked('verboseLogging');
-
-          await homebridge.updatePluginConfig([cfg]);
-          await homebridge.savePluginConfig();
-          homebridge.toast.success('Instellingen opgeslagen — herstart de child bridge om ze te activeren.');
-          status.textContent = '✓ Opgeslagen om ' + new Date().toLocaleTimeString('nl-NL');
-        } catch (err) {
-          homebridge.toast.error('Opslaan mislukt: ' + err.message);
-          status.textContent = '⚠ ' + err.message;
-        } finally {
-          btn.disabled = false;
-        }
-      }
-
-      function getVal(id) {
-        const el = document.getElementById(id);
-        return el ? el.value.trim() : '';
-      }
-      function getChecked(id) {
-        const el = document.getElementById(id);
-        return el ? el.checked : false;
-      }
-
-      // ============================================================
-      // DASHBOARD — HELPERS
-      // ============================================================
-      function hoursToUptime(h) {
-        h = Math.floor(h);
-        const days  = Math.floor(h / 24);
-        const hours = h % 24;
-        const years = Math.floor(days / 365);
-        const remDays = days % 365;
-        const parts = [];
-        if (years > 0)   parts.push(years + ' jaar');
-        if (remDays > 0) parts.push(remDays + ' dag' + (remDays !== 1 ? 'en' : ''));
-        parts.push(hours + ' uur');
-        return parts.join(', ');
-      }
-
-      function deriveMode(d) {
-        const fi = (d['FanInfo'] || '').toLowerCase();
-        switch (fi) {
-          case 'high':   return { label: 'Turbo',       sub: 'Maximale stand actief',  cls: 'bad'   };
-          case 'auto':   return { label: 'Automatisch', sub: 'CO₂-gestuurd',       cls: 'good'  };
-          case 'medium': return { label: 'Normaal',     sub: 'Gemiddelde stand',        cls: 'warn'  };
-          case 'low':    return { label: 'Nachtstand',  sub: 'Laagste stand',           cls: 'night' };
-          case 'away':   return { label: 'Afwezig',     sub: 'Afwezigheidsstand',       cls: 'night' };
-          default:       return { label: fi || '–',     sub: '',                        cls: ''      };
-        }
-      }
-
-      function airQuality(ppm) {
-        if (ppm == null) return { text: 'Onbekend', cls: '' };
-        if (ppm < 350)   return { text: 'Uitstekend', cls: 'good' };
-        if (ppm < 1000)  return { text: 'Goed',       cls: 'good' };
-        if (ppm < 2500)  return { text: 'Matig',      cls: 'warn' };
-        if (ppm < 5000)  return { text: 'Slecht',     cls: 'warn' };
-        return                  { text: 'Gevaarlijk',  cls: 'bad'  };
-      }
-
-      function co2Trend(v) {
-        if (v == null) return '–';
-        if (v > 2)  return '⬆ Stijgend (' + v + ')';
-        if (v < -2) return '⬇ Dalend ('   + v + ')';
-        return '➡ Stabiel (' + v + ')';
-      }
-
-      function setTxt(id, val) {
-        const el = document.getElementById(id);
-        if (el) el.textContent = (val != null && val !== '') ? val : '–';
-      }
-
-      function showError(msg) {
-        const el = document.getElementById('error-area');
-        el.innerHTML = '<div class="error-box">⚠ ' + msg + '</div>';
-        el.classList.remove('hidden');
-      }
-
-      // ============================================================
-      // DASHBOARD — RENDER
-      // ============================================================
-      function renderDashboard(status, queue, meta) {
-        const d = status || {};
-
-        const mode = deriveMode(d);
-        const badge = document.getElementById('mode-badge');
-        badge.textContent = mode.label;
-        badge.className   = 'mode-badge ' + mode.cls;
-        setTxt('mode-sub', mode.sub);
-        setTxt('val-speed', d['Speed status'] != null ? Math.round(d['Speed status']) : '–');
-
-        const aq   = airQuality(d['CO2level (ppm)']);
-        const aqEl = document.getElementById('val-aq');
-        aqEl.textContent = aq.text;
-        aqEl.className   = 'badge ' + aq.cls;
-
-        setTxt('val-co2',  d['CO2level (ppm)'] ?? '–');
-        setTxt('val-hum',  d.hum  != null ? d.hum.toFixed(1)  : '–');
-        setTxt('val-temp', d.temp != null ? d.temp.toFixed(1) : '–');
-
-        setTxt('val-exhfan',  d['ExhFanSpeed (%)'] ?? '–');
-        setTxt('val-rpm',     d['Fan speed (rpm)'] ?? '–');
-        setTxt('val-fault',   d['Internal fault'] ? '⚠ JA' : 'Geen');
-        setTxt('val-uptime',  d['Total operation (hours)'] != null
-          ? hoursToUptime(d['Total operation (hours)']) : '–');
-        setTxt('val-startups', d['Startup counter'] ?? '–');
-
-        setTxt('info-ip',   meta?.deviceIp  || '–');
-        setTxt('info-mqtt', meta?.mqttBroker || '–');
-        const statusEl = document.getElementById('info-status');
-        statusEl.innerHTML = status
-          ? '<span class="dot-online">●</span> Online'
-          : '<span class="dot-offline">●</span> Offline';
-
-        if (queue) {
-          setTxt('info-speed',    queue.ithoSpeed    ?? '–');
-          setTxt('info-fallback', queue.fallBackSpeed ?? '–');
-        }
-        setTxt('info-co2vel', co2Trend(d['Co2 velocity']));
-
-        document.getElementById('dashboard').classList.remove('hidden');
-      }
-
-      // ============================================================
-      // DASHBOARD — LOAD
-      // ============================================================
-      async function loadDashboard() {
-        const btn = document.getElementById('refresh-btn');
-        btn.disabled = true;
-        document.getElementById('loading').classList.remove('hidden');
-        document.getElementById('error-area').classList.add('hidden');
-        document.getElementById('dashboard').classList.add('hidden');
-
-        try {
-          const config  = await homebridge.getPluginConfig();
-          const cfg     = Array.isArray(config) ? config[0] : config;
-          const deviceIp = cfg?.api?.deviceIp || (cfg?.api?.protocol === 'http' ? cfg?.api?.ip : null);
-          const mqttBroker = cfg?.api?.protocol === 'mqtt'
-            ? ((cfg.api.ip || '') + ':' + (cfg.api.port || '')) : null;
-
-          if (!deviceIp) {
-            showError('Geen device IP ingesteld. Ga naar ⚙️ Instellingen en vul het Device IP in.');
-            return;
-          }
-
-          const result = await homebridge.request('/module-info', {
-            deviceIp,
-            mqttBroker,
-            deviceUsername: cfg?.api?.deviceUsername,
-            devicePassword: cfg?.api?.devicePassword,
-          });
-
-          if (!result.ok) {
-            showError('Kan module niet bereiken op ' + deviceIp + ': ' + result.error);
-            renderDashboard(null, null, { deviceIp, mqttBroker });
-            return;
-          }
-
-          renderDashboard(result.status, result.queue, result.meta);
-          document.getElementById('last-update').textContent =
-            'Bijgewerkt ' + new Date().toLocaleTimeString('nl-NL');
-        } catch (err) {
-          showError(err.message || 'Onbekende fout');
-        } finally {
-          document.getElementById('loading').classList.add('hidden');
-          btn.disabled = false;
-        }
-      }
-
-      // ============================================================
-      // INIT
-      // ============================================================
-      loadDashboard();
-      setInterval(loadDashboard, 30000);
-    </script>
+    <script src="script.js"></script>
   </body>
 </html>
