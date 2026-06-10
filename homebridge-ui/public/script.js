@@ -252,6 +252,7 @@ async function loadSettings() {
     setVal('humidity_cooldownMinutes',   cfg.automation?.humidity?.cooldownMinutes    ?? 20);
     setVal('humidity_riseRate',          cfg.automation?.humidity?.riseRate           ?? 3);
     setVal('humidity_riseWindowSeconds', cfg.automation?.humidity?.riseWindowSeconds  ?? 24);
+    setVal('humidity_triggerLogic',      cfg.automation?.humidity?.triggerLogic       ?? 'or');
     setVal('humidity_minSpeedThreshold', cfg.automation?.humidity?.minSpeedThreshold  ?? 75);
     updateHumidityModeHints();
 
@@ -278,6 +279,7 @@ async function loadSettings() {
     setVal('mirrorHeater_dropThreshold',    cfg.automation?.mirrorHeater?.dropThreshold    ?? '');
     setVal('mirrorHeater_riseRate',          cfg.automation?.mirrorHeater?.riseRate          ?? 3);
     setVal('mirrorHeater_riseWindowSeconds', cfg.automation?.mirrorHeater?.riseWindowSeconds ?? 24);
+    setVal('mirrorHeater_triggerLogic',      cfg.automation?.mirrorHeater?.triggerLogic      ?? 'or');
     setVal('mirrorHeater_durationMinutes',  cfg.automation?.mirrorHeater?.durationMinutes  ?? 30);
     setVal('mirrorHeater_triggerDelayMinutes', cfg.automation?.mirrorHeater?.triggerDelayMinutes ?? 5);
 
@@ -293,6 +295,7 @@ async function loadSettings() {
 
     // Overig
     setToggle('verboseLogging', cfg.verboseLogging ?? false);
+    setToggle('dataLogging_enabled', cfg.dataLogging?.enabled ?? false);
 
     state.settingsLoaded = true;
   } catch (err) {
@@ -375,6 +378,7 @@ async function saveSettings() {
         triggerThreshold:     numVal('mirrorHeater_triggerThreshold', 70),
         riseRate:             numVal('mirrorHeater_riseRate', 3),
         riseWindowSeconds:    numVal('mirrorHeater_riseWindowSeconds', 24),
+        triggerLogic:         getVal('mirrorHeater_triggerLogic') || 'or',
         durationMinutes:      numVal('mirrorHeater_durationMinutes', 30),
         triggerDelayMinutes:  numVal('mirrorHeater_triggerDelayMinutes', 5),
       };
@@ -412,6 +416,7 @@ async function saveSettings() {
     };
 
     cfg.verboseLogging = getChecked('verboseLogging');
+    cfg.dataLogging = { enabled: getChecked('dataLogging_enabled') };
 
     await homebridge.updatePluginConfig([cfg]);
     await homebridge.savePluginConfig();
@@ -671,6 +676,7 @@ function buildHumidityConfig() {
     cfg.cooldownMinutes   = numVal('humidity_cooldownMinutes', 20);
     cfg.riseRate          = numVal('humidity_riseRate', 3);
     cfg.riseWindowSeconds = numVal('humidity_riseWindowSeconds', 24);
+    cfg.triggerLogic      = getVal('humidity_triggerLogic') || 'or';
   } else {
     cfg.minSpeedThreshold = numVal('humidity_minSpeedThreshold', 75);
   }

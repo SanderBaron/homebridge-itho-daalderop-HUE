@@ -15,6 +15,15 @@ export interface HumidityAutomationConfig {
   riseRate: number;
   /** Rapid-rise detection window (seconds) */
   riseWindowSeconds: number;
+  /**
+   * How the two badkamer triggers combine (default 'or'):
+   *   'or'        — absolute threshold OR rapid rise
+   *   'and'       — both must hold; filters household moisture pulses at low
+   *                 humidity and slow weather creep past the threshold
+   *   'threshold' — absolute threshold only
+   *   'rise'      — rapid rise only
+   */
+  triggerLogic?: 'or' | 'and' | 'threshold' | 'rise';
   /** Wasruimte only: below this humidity the fan is set to low (%) */
   minSpeedThreshold: number;
 }
@@ -111,17 +120,17 @@ export class HumidityAutomation {
   // ── Badkamer mode ─────────────────────────────────────────────────────────
 
   private updateBadkamer(hum: number): void {
-    const rapidRise = this.detectRapidRise(hum);
+    const trigger = this.evaluateTrigger(hum);
 
     switch (this.state) {
       case 'idle':
-        if (hum >= this.config.boostThreshold || rapidRise) {
-          this.startBoosting(hum, rapidRise);
+        if (trigger.fired) {
+          this.startBoosting(trigger.reason);
         }
         break;
 
       case 'boosting':
-        if (hum >= this.config.boostThreshold || rapidRise) {
+        if (trigger.fired) {
           // Hum still rising or re-triggering — restart the minimum timer so we don't
           // exit too early. Only restart if it already elapsed (re-trigger after a break).
           if (this.minElapsed) {
@@ -138,12 +147,31 @@ export class HumidityAutomation {
     }
   }
 
-  private startBoosting(hum: number, rapidRise: boolean): void {
+  /**
+   * Combines the absolute threshold and rapid-rise conditions per triggerLogic.
+   * Returns the human-readable reason for the boost-start log line.
+   */
+  private evaluateTrigger(hum: number): { fired: boolean; reason: string } {
+    const absolute = hum >= this.config.boostThreshold;
+    const rapidRise = this.detectRapidRise(hum);
+    const abs = `${hum.toFixed(1)}% ≥ drempel ${this.config.boostThreshold}%`;
+
+    switch (this.config.triggerLogic ?? 'or') {
+      case 'and':
+        return { fired: absolute && rapidRise, reason: `${abs} én snelle stijging` };
+      case 'threshold':
+        return { fired: absolute, reason: abs };
+      case 'rise':
+        return { fired: rapidRise, reason: 'snelle stijging gedetecteerd' };
+      case 'or':
+      default:
+        return { fired: absolute || rapidRise, reason: absolute ? abs : 'snelle stijging gedetecteerd' };
+    }
+  }
+
+  private startBoosting(reason: string): void {
     this.clearMinTimer();
     this.state = 'boosting';
-    const reason = rapidRise
-      ? `snelle stijging gedetecteerd`
-      : `${hum.toFixed(1)}% ≥ drempel ${this.config.boostThreshold}%`;
     this.log.info(`[Humidity] Boost gestart (${reason}) — ventilator naar HIGH, minimaal ${this.config.cooldownMinutes} min`);
     this.onSpeedChange('high');
     this.startMinTimer();

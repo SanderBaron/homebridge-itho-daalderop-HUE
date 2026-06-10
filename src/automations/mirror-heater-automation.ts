@@ -21,6 +21,11 @@ export interface MirrorHeaterConfig {
   /** Window for fast-rise detection in seconds. */
   riseWindowSeconds?: number;
   /**
+   * How triggerThreshold and fast rise combine (default 'or'):
+   * 'or' | 'and' | 'threshold' (absolute only) | 'rise' (fast rise only)
+   */
+  triggerLogic?: 'or' | 'and' | 'threshold' | 'rise';
+  /**
    * Optional: if humidity drops below this value after activation, the off-timer
    * is already running so nothing changes — but the guard during the delay window
    * uses this to avoid activating if humidity already dropped back down.
@@ -39,7 +44,7 @@ export interface MirrorHeaterConfig {
 }
 
 type MirrorState = 'idle' | 'delay_waiting' | 'active';
-type TriggerReason = 'absolute' | 'rise';
+type TriggerReason = 'absolute' | 'rise' | 'absolute+rise';
 
 const BUTTON_POLL_INTERVAL_MS = 5_000;
 
@@ -153,25 +158,33 @@ export class MirrorHeaterAutomation {
   // ── Trigger detection ──────────────────────────────────────────────────────
 
   private checkTrigger(humidity: number, now: number): void {
-    // 1. Absolute threshold
-    if (humidity >= this.config.triggerThreshold) {
-      this.tryActivate(humidity, 'absolute');
-      return;
-    }
+    const absolute = humidity >= this.config.triggerThreshold;
+    const rise = this.detectRise(humidity, now);
 
-    // 2. Fast rise (OR with absolute)
+    let fired: boolean;
+    let reason: TriggerReason;
+    switch (this.config.triggerLogic ?? 'or') {
+      case 'and':       fired = absolute && rise; reason = 'absolute+rise'; break;
+      case 'threshold': fired = absolute;         reason = 'absolute';      break;
+      case 'rise':      fired = rise;             reason = 'rise';          break;
+      case 'or':
+      default:          fired = absolute || rise; reason = absolute ? 'absolute' : 'rise'; break;
+    }
+    if (fired) this.tryActivate(humidity, reason);
+  }
+
+  private detectRise(humidity: number, now: number): boolean {
     const riseRate = this.config.riseRate ?? 0;
     const windowMs = (this.config.riseWindowSeconds ?? 0) * 1_000;
-    if (riseRate > 0 && windowMs > 0 && this.humidityWindow.length >= 2) {
-      const oldest = this.humidityWindow[0];
-      if (oldest !== undefined && now - oldest.ts <= windowMs && humidity - oldest.val >= riseRate) {
-        this.log.debug(
-          `[Mirror] Snelle stijging gedetecteerd: +${(humidity - oldest.val).toFixed(1)}% ` +
-          `in ${Math.round((now - oldest.ts) / 1000)}s — trigger`,
-        );
-        this.tryActivate(humidity, 'rise');
-      }
-    }
+    if (riseRate <= 0 || windowMs <= 0 || this.humidityWindow.length < 2) return false;
+    const oldest = this.humidityWindow[0];
+    if (oldest === undefined || now - oldest.ts > windowMs) return false;
+    if (humidity - oldest.val < riseRate) return false;
+    this.log.debug(
+      `[Mirror] Snelle stijging gedetecteerd: +${(humidity - oldest.val).toFixed(1)}% ` +
+      `in ${Math.round((now - oldest.ts) / 1000)}s`,
+    );
+    return true;
   }
 
   // ── Manual trigger ─────────────────────────────────────────────────────────

@@ -119,6 +119,18 @@
         }
       },
 
+      "dataLogging": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "title": "Datalogging (CSV) inschakelen",
+            "type": "boolean",
+            "default": false,
+            "description": "Schrijft elke statusmeting (kanaal-RV, RFT-RV, snelheid, automaat-status) naar itho-humidity-log.csv in de Homebridge-opslagmap. Handig om triggerinstellingen te tunen op echte data."
+          }
+        }
+      },
+
       "hue": {
         "type": "object",
         "properties": {
@@ -211,6 +223,18 @@
                 "maximum": 120,
                 "description": "Tijdvenster voor snelle stijging. Itho spec: 24 of 48 seconden."
               },
+              "triggerLogic": {
+                "title": "Triggerlogica",
+                "type": "string",
+                "default": "or",
+                "oneOf": [
+                  { "title": "Drempel OF snelle stijging", "enum": ["or"] },
+                  { "title": "Drempel ÉN snelle stijging", "enum": ["and"] },
+                  { "title": "Alleen drempel", "enum": ["threshold"] },
+                  { "title": "Alleen snelle stijging", "enum": ["rise"] }
+                ],
+                "description": "Hoe de absolute drempel en snelle-stijging-detectie samen een boost triggeren. ÉN filtert vochtpulsjes op laag niveau (koken, deur open) én traag weer-kruipen over de drempel."
+              },
               "minSpeedThreshold": {
                 "title": "Minimum-stand drempel (%, alleen wasruimte)",
                 "type": "number",
@@ -271,6 +295,18 @@
                 "minimum": 5,
                 "maximum": 120,
                 "description": "Tijdvenster voor snelle stijging. Itho spec: 24 of 48 seconden."
+              },
+              "triggerLogic": {
+                "title": "Triggerlogica",
+                "type": "string",
+                "default": "or",
+                "oneOf": [
+                  { "title": "Drempel OF snelle stijging", "enum": ["or"] },
+                  { "title": "Drempel ÉN snelle stijging", "enum": ["and"] },
+                  { "title": "Alleen drempel", "enum": ["threshold"] },
+                  { "title": "Alleen snelle stijging", "enum": ["rise"] }
+                ],
+                "description": "Hoe de inschakeldrempel en snelle-stijging-detectie samen de spiegel activeren."
               },
               "triggerDelayMinutes": {
                 "title": "Vertraging na ventilator-boost (min)",
@@ -452,7 +488,8 @@
             { "key": "api.devicePassword" }
           ]
         },
-        { "key": "verboseLogging" }
+        { "key": "verboseLogging" },
+        { "key": "dataLogging.enabled" }
       ]
     },
 
@@ -483,6 +520,15 @@
             { "key": "automation.humidity.dropThreshold", "description": "Cooldown timer starts when humidity drops below this %." }
           ]
         },
+        {
+          "type": "flex",
+          "flex-flow": "row wrap",
+          "items": [
+            { "key": "automation.humidity.riseRate" },
+            { "key": "automation.humidity.riseWindowSeconds" }
+          ]
+        },
+        { "key": "automation.humidity.triggerLogic" },
         { "key": "automation.humidity.cooldownMinutes" }
       ]
     },
@@ -584,6 +630,7 @@
             { "key": "automation.mirrorHeater.riseWindowSeconds" }
           ]
         },
+        { "key": "automation.mirrorHeater.triggerLogic" },
         {
           "type": "flex",
           "flex-flow": "row wrap",

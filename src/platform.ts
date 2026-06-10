@@ -40,7 +40,9 @@ import { HttpApi } from './api/http';
 import { HueApi } from './api/hue';
 import { sanitizeStatusPayload } from './utils/api';
 import { HumidityAutomation } from './automations/humidity-automation';
+import { HumidityDataLogger } from './utils/data-logger';
 import { ScheduleEngine } from './automations/schedule-engine';
+import path from 'node:path';
 import { MirrorHeaterAutomation } from './automations/mirror-heater-automation';
 import { ToiletLightAutomation } from './automations/toilet-light-automation';
 
@@ -60,6 +62,9 @@ export class HomebridgeIthoDaalderop implements DynamicPlatformPlugin {
   private humidityAutomation: HumidityAutomation | null = null;
   private scheduleEngine: ScheduleEngine | null = null;
   private mirrorHeaterAutomation: MirrorHeaterAutomation | null = null;
+  private dataLogger: HumidityDataLogger | null = null;
+  /** Last CVE automation state written to the data log — for transition markers. */
+  private lastLoggedCveState = 'idle';
   private toiletLightAutomation: ToiletLightAutomation | null = null;
   private hueApi: HueApi | null = null;
   private dailyResetTimer: ReturnType<typeof setTimeout> | null = null;
@@ -167,6 +172,12 @@ export class HomebridgeIthoDaalderop implements DynamicPlatformPlugin {
   }
 
   private setupAutomations(): void {
+    if (this.config.dataLogging?.enabled) {
+      const file = path.join(this.api.user.storagePath(), 'itho-humidity-log.csv');
+      this.dataLogger = new HumidityDataLogger(file, this.log);
+      this.log.info(`[DataLog] Datalogging actief → ${file}`);
+    }
+
     const humCfg = this.config.automation?.humidity;
 
     this.humidityAutomation = new HumidityAutomation(
@@ -178,6 +189,7 @@ export class HomebridgeIthoDaalderop implements DynamicPlatformPlugin {
         cooldownMinutes:     humCfg?.cooldownMinutes     ?? DEFAULT_HUMIDITY_COOLDOWN_MINUTES,
         riseRate:            humCfg?.riseRate            ?? DEFAULT_HUMIDITY_RISE_RATE,
         riseWindowSeconds:   humCfg?.riseWindowSeconds   ?? DEFAULT_HUMIDITY_RISE_WINDOW_SECONDS,
+        triggerLogic:        humCfg?.triggerLogic        ?? 'or',
         minSpeedThreshold:   humCfg?.minSpeedThreshold   ?? DEFAULT_HUMIDITY_MIN_SPEED_THRESHOLD,
       },
       this.handleAutomationSpeedChange.bind(this),
@@ -206,6 +218,7 @@ export class HomebridgeIthoDaalderop implements DynamicPlatformPlugin {
           dropThreshold:            mirrorCfg.dropThreshold,
           riseRate:                 mirrorCfg.riseRate                ?? 3,
           riseWindowSeconds:        mirrorCfg.riseWindowSeconds       ?? 24,
+          triggerLogic:             mirrorCfg.triggerLogic            ?? 'or',
           triggerDelayMinutes:      mirrorCfg.triggerDelayMinutes     ?? 5,
           durationMinutes:          mirrorCfg.durationMinutes         ?? 30,
           manualButtonTimerMinutes: mirrorCfg.manualButtonTimerMinutes ?? 30,
@@ -379,6 +392,21 @@ export class HomebridgeIthoDaalderop implements DynamicPlatformPlugin {
     const indoorHum = payload['Indoorhumidity (%)'];
     if (indoorHum !== null && indoorHum !== undefined) {
       this.mirrorHeaterAutomation?.update(indoorHum);
+    }
+
+    if (this.dataLogger) {
+      const cveState = this.humidityAutomation?.getState() ?? 'idle';
+      const event = cveState !== this.lastLoggedCveState
+        ? `cve:${this.lastLoggedCveState}->${cveState}`
+        : undefined;
+      this.lastLoggedCveState = cveState;
+      this.dataLogger.append({
+        ductHum:   payload.hum,
+        indoorHum: indoorHum,
+        speedPct:  payload['Speed status'],
+        cveState,
+        event,
+      });
     }
   }
 

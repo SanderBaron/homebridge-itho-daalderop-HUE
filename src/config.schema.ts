@@ -68,6 +68,8 @@ export const configSchema = z.object({
           riseRate: z.number().min(0).max(20).default(3),
           /** Rapid-rise detection window in seconds (Itho spec: 24 or 48) */
           riseWindowSeconds: z.number().min(5).max(120).default(24),
+          /** How threshold and rapid rise combine: or | and | threshold only | rise only */
+          triggerLogic: z.enum(['or', 'and', 'threshold', 'rise']).default('or'),
           /** Wasruimte only: below this humidity the fan is set to low (%) */
           minSpeedThreshold: z.number().min(40).max(85).default(75),
         })
@@ -113,10 +115,12 @@ export const configSchema = z.object({
            * Does NOT extend or shorten the burn time (durationMinutes).
            */
           dropThreshold: z.number().min(40).max(95).optional(),
-          /** Rapid-rise trigger: activate when humidity rises this many % within riseWindowSeconds (0 = disabled). OR with triggerThreshold. */
+          /** Rapid-rise trigger: activate when humidity rises this many % within riseWindowSeconds (0 = disabled) */
           riseRate: z.number().min(0).max(20).default(3),
           /** Rapid-rise detection window in seconds (Itho spec: 24 or 48) */
           riseWindowSeconds: z.number().min(5).max(120).default(24),
+          /** How threshold and rapid rise combine: or | and | threshold only | rise only */
+          triggerLogic: z.enum(['or', 'and', 'threshold', 'rise']).default('or'),
           /**
            * Minimum minutes after the CVE fan boost before the mirror heater
            * can activate. The mirror is not immediately fogged on shower start.
@@ -155,6 +159,17 @@ export const configSchema = z.object({
     .object({
       enabled: z.boolean().default(true),
       time: timeSchema.default('02:00'),
+    })
+    .optional(),
+
+  /**
+   * CSV data logging of every status update (duct/indoor humidity, fan speed,
+   * automation state) to <storagePath>/itho-humidity-log.csv — for tuning the
+   * trigger settings on real data.
+   */
+  dataLogging: z
+    .object({
+      enabled: z.boolean().default(false),
     })
     .optional(),
 

@@ -163,6 +163,99 @@ describe('HumidityAutomation — badkamer', () => {
   });
 });
 
+describe('HumidityAutomation — triggerLogic', () => {
+  let onSpeed: ReturnType<typeof vi.fn>;
+  let auto: HumidityAutomation;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    onSpeed = vi.fn();
+  });
+
+  afterEach(() => { vi.useRealTimers(); });
+
+  describe("'and' — threshold AND rapid rise required", () => {
+    beforeEach(() => {
+      auto = new HumidityAutomation(makeCfg({ triggerLogic: 'and', boostThreshold: 56 }), onSpeed, mockLog);
+    });
+
+    it('does NOT trigger on threshold alone (slow weather creep)', () => {
+      // Slow creep past the threshold: each rise stays below riseRate within the window
+      auto.update(55);
+      vi.advanceTimersByTime(60_000);
+      auto.update(57); // above 56, but +2% over 60s → no rapid rise
+      expect(auto.getState()).toBe('idle');
+      expect(onSpeed).not.toHaveBeenCalled();
+    });
+
+    it('does NOT trigger on rapid rise alone at low humidity (cooking pulse)', () => {
+      auto.update(45);
+      vi.advanceTimersByTime(10_000);
+      auto.update(49); // +4% in 10s, but 49 < 56
+      expect(auto.getState()).toBe('idle');
+      expect(onSpeed).not.toHaveBeenCalled();
+    });
+
+    it('triggers when a rapid rise crosses the threshold (shower)', () => {
+      auto.update(53);
+      vi.advanceTimersByTime(10_000);
+      auto.update(58); // +5% in 10s AND 58 ≥ 56
+      expect(auto.getState()).toBe('boosting');
+      expect(onSpeed).toHaveBeenCalledWith('high');
+    });
+
+    it('re-triggers on a second rise while humidity never dropped below dropThreshold', () => {
+      auto = new HumidityAutomation(
+        makeCfg({ triggerLogic: 'and', boostThreshold: 56, dropThreshold: 54 }),
+        onSpeed, mockLog,
+      );
+      // First shower
+      auto.update(53);
+      vi.advanceTimersByTime(10_000);
+      auto.update(58); // +5% in 10s AND ≥ 56 → boost
+      expect(auto.getState()).toBe('boosting');
+
+      // Minimum timer elapses while the duct hangs at 55 — between drop (54)
+      // and boost (56) thresholds, so the boost cannot finish
+      auto['lastHumidity'] = 55;
+      vi.advanceTimersByTime(20 * 60_000);
+      expect(auto['minElapsed']).toBe(true);
+      expect(auto.getState()).toBe('boosting');
+
+      // Second shower 20+ min later: new rapid rise crosses the threshold again
+      auto.update(55); // stays boosting (55 > drop 54)
+      expect(auto.getState()).toBe('boosting');
+      vi.advanceTimersByTime(10_000);
+      auto.update(59); // +4% in 10s AND ≥ 56 → minimum timer restarts
+      expect(auto.getState()).toBe('boosting');
+      expect(auto['minElapsed']).toBe(false); // timer restarted
+    });
+  });
+
+  describe("'threshold' — absolute only", () => {
+    it('ignores rapid rise below the threshold', () => {
+      auto = new HumidityAutomation(makeCfg({ triggerLogic: 'threshold' }), onSpeed, mockLog);
+      auto.update(70);
+      vi.advanceTimersByTime(10_000);
+      auto.update(75); // +5% in 10s, below 85
+      expect(auto.getState()).toBe('idle');
+      auto.update(85); // threshold reached
+      expect(auto.getState()).toBe('boosting');
+    });
+  });
+
+  describe("'rise' — rapid rise only", () => {
+    it('ignores the absolute threshold', () => {
+      auto = new HumidityAutomation(makeCfg({ triggerLogic: 'rise' }), onSpeed, mockLog);
+      auto.update(90); // far above 85, but no rise history
+      expect(auto.getState()).toBe('idle');
+      vi.advanceTimersByTime(10_000);
+      auto.update(94); // +4% in 10s
+      expect(auto.getState()).toBe('boosting');
+    });
+  });
+});
+
 describe('HumidityAutomation — wasruimte', () => {
   let onSpeed: ReturnType<typeof vi.fn>;
   let auto: HumidityAutomation;

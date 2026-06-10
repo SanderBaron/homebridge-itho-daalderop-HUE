@@ -240,7 +240,17 @@
                 <input id="humidity_riseWindowSeconds" type="number" min="5" max="120" placeholder="24" />
               </label>
             </div>
-            <p class="hint">Boost triggert ook bij stijging van X% binnen Y seconden. Stel in op 0 om uit te schakelen. Itho spec: 3% / 24s.</p>
+            <p class="hint">Stijging van X% binnen Y seconden. Stel in op 0 om uit te schakelen. Itho spec: 3% / 24s.</p>
+            <div class="form-row" style="margin-top:8px;">
+              <label for="humidity_triggerLogic">Triggerlogica</label>
+              <select id="humidity_triggerLogic">
+                <option value="or">Drempel OF snelle stijging</option>
+                <option value="and">Drempel ÉN snelle stijging</option>
+                <option value="threshold">Alleen drempel</option>
+                <option value="rise">Alleen snelle stijging</option>
+              </select>
+            </div>
+            <p class="hint">ÉN: boost alleen als de drempel gepasseerd is én de vochtigheid snel stijgt — filtert vochtpulsjes op laag niveau (koken, deur open) en traag weer-kruipen over de drempel. Een tweede douche terwijl het kanaal nog vochtig is, triggert opnieuw zodra er weer een snelle stijging is.</p>
             <label style="max-width:200px;">Minimale cooldown (min)
               <input id="humidity_cooldownMinutes" type="number" min="1" max="120" placeholder="20" />
             </label>
@@ -313,7 +323,16 @@
               <input id="mirrorHeater_riseWindowSeconds" type="number" min="5" max="120" placeholder="24" />
             </label>
           </div>
-          <p class="hint">Spiegel triggert ook bij stijging van X% binnen Y seconden — ook als de inschakeldrempel nog niet bereikt is. Stel in op 0 om uit te schakelen. Itho spec: 3% / 24s.</p>
+          <p class="hint">Stijging van X% binnen Y seconden. Stel in op 0 om uit te schakelen. Itho spec: 3% / 24s.</p>
+          <div class="form-row">
+            <label for="mirrorHeater_triggerLogic">Triggerlogica</label>
+            <select id="mirrorHeater_triggerLogic">
+              <option value="or">Drempel OF snelle stijging</option>
+              <option value="and">Drempel ÉN snelle stijging</option>
+              <option value="threshold">Alleen drempel</option>
+              <option value="rise">Alleen snelle stijging</option>
+            </select>
+          </div>
           <div class="form-grid two">
             <label>Brandtijd na inschakelen (min)
               <input id="mirrorHeater_durationMinutes" type="number" min="1" max="120" placeholder="30" />
@@ -382,8 +401,17 @@
               <span id="toggle-label-verboseLogging">Uit</span>
             </label>
             <input type="checkbox" id="verboseLogging" class="toggle-cb" />
-            <span class="hint" style="margin-top:4px;">Uitgebreide logging (voor probleemoplossing)</span>
           </div>
+          <p class="hint">Uitgebreide logging in de Homebridge-log.</p>
+          <div class="form-row" style="margin-top:10px;">
+            <label class="toggle-wrap" data-toggle="dataLogging_enabled">
+              <span class="toggle-pill" id="toggle-dataLogging_enabled"></span>
+              <span id="toggle-label-dataLogging_enabled">Uit</span>
+            </label>
+            <input type="checkbox" id="dataLogging_enabled" class="toggle-cb" />
+            <span style="margin-left:10px;">Datalogging (CSV)</span>
+          </div>
+          <p class="hint">Schrijft elke meting (kanaal-RV, RFT-RV, snelheid, automaat-status) naar <code>itho-humidity-log.csv</code> in de Homebridge-opslagmap — om triggerinstellingen te tunen op echte data.</p>
         </section>
 
       </div><!-- /tab-settings -->
