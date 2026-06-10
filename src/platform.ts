@@ -63,8 +63,8 @@ export class HomebridgeIthoDaalderop implements DynamicPlatformPlugin {
   private scheduleEngine: ScheduleEngine | null = null;
   private mirrorHeaterAutomation: MirrorHeaterAutomation | null = null;
   private dataLogger: HumidityDataLogger | null = null;
-  /** Last CVE automation state written to the data log — for transition markers. */
-  private lastLoggedCveState = 'idle';
+  /** Last automation states written to the data log — for transition markers. */
+  private lastLoggedStates: Record<string, string> = { cve: 'idle', mirror: 'idle', toilet: 'idle' };
   private toiletLightAutomation: ToiletLightAutomation | null = null;
   private hueApi: HueApi | null = null;
   private dailyResetTimer: ReturnType<typeof setTimeout> | null = null;
@@ -425,17 +425,26 @@ export class HomebridgeIthoDaalderop implements DynamicPlatformPlugin {
     }
 
     if (this.dataLogger) {
-      const cveState = this.humidityAutomation?.getState() ?? 'idle';
-      const event = cveState !== this.lastLoggedCveState
-        ? `cve:${this.lastLoggedCveState}->${cveState}`
-        : undefined;
-      this.lastLoggedCveState = cveState;
+      const states: Record<string, string> = {
+        cve:    this.humidityAutomation?.getState()     ?? 'idle',
+        mirror: this.mirrorHeaterAutomation?.getState() ?? 'idle',
+        toilet: this.toiletLightAutomation?.getState()  ?? 'idle',
+      };
+      const events: string[] = [];
+      for (const [name, state] of Object.entries(states)) {
+        if (state !== this.lastLoggedStates[name]) {
+          events.push(`${name}:${this.lastLoggedStates[name]}->${state}`);
+          this.lastLoggedStates[name] = state;
+        }
+      }
       this.dataLogger.append({
-        ductHum:   payload.hum,
-        indoorHum: indoorHum,
-        speedPct:  payload['Speed status'],
-        cveState,
-        event,
+        ductHum:     payload.hum,
+        indoorHum:   indoorHum,
+        speedPct:    payload['Speed status'],
+        cveState:    states.cve ?? 'idle',
+        mirrorState: states.mirror,
+        toiletState: states.toilet,
+        event:       events.length ? events.join(';') : undefined,
       });
     }
   }
