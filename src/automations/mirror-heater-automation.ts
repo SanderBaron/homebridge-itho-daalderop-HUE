@@ -110,6 +110,9 @@ export class MirrorHeaterAutomation {
    * Source: ithostatus field 'Indoorhumidity (%)'
    */
   update(humidity: number): void {
+    // RFT-RV dropouts arrive as 0 — ignore them entirely so a 0→real jump
+    // can never count as a fast rise
+    if (!Number.isFinite(humidity) || humidity <= 0) return;
     this.lastHumidity = humidity;
     const now = Date.now();
 

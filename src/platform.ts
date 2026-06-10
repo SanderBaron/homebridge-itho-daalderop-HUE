@@ -71,6 +71,8 @@ export class HomebridgeIthoDaalderop implements DynamicPlatformPlugin {
   /** Polls the Hue sensor for the toilet input-only switch. */
   private toiletSwitchPollInterval: ReturnType<typeof setInterval> | null = null;
   private toiletSwitchLastUpdated: string | null = null;
+  /** Last seen on/off state when the toilet source is a Hue light. */
+  private toiletLightLastOn: boolean | null = null;
 
   constructor(public readonly log: Logger, config: PlatformConfig, public readonly api: API) {
     this.config = config as ConfigSchema;
@@ -257,10 +259,38 @@ export class HomebridgeIthoDaalderop implements DynamicPlatformPlugin {
    * Polling at 3 s gives ~1–3 s latency — fast enough for a toilet light.
    * When Hue v2 SSE is available this can be replaced with an event subscription.
    */
-  private startToiletSwitchPoller(sensorId: string): void {
+  private startToiletSwitchPoller(idSpec: string): void {
     if (!this.hueApi || !this.toiletLightAutomation) return;
 
     const POLL_MS = 3_000;
+
+    // The id can be 'light:23' (Hue light/socket — e.g. a zigbee switch that the
+    // bridge exposes as a light), 'sensor:8', or a bare id (legacy = sensor).
+    const sep = idSpec.indexOf(':');
+    const kind = sep === -1 ? 'sensor' : idSpec.slice(0, sep);
+    const sensorId = sep === -1 ? idSpec : idSpec.slice(sep + 1);
+
+    if (kind === 'light') {
+      this.toiletSwitchPollInterval = setInterval(() => {
+        void this.hueApi!.getLight(sensorId)
+          .then(light => {
+            if (this.toiletLightLastOn === null) {
+              this.toiletLightLastOn = light.on; // first poll: only record
+              return;
+            }
+            if (light.on === this.toiletLightLastOn) return;
+            this.toiletLightLastOn = light.on;
+            if (light.on) this.toiletLightAutomation?.notifyLightOn();
+            else this.toiletLightAutomation?.notifyLightOff();
+          })
+          .catch((err: unknown) => {
+            this.log.debug(
+              `[Toilet] Lamp poll fout: ${err instanceof Error ? err.message : String(err)}`,
+            );
+          });
+      }, POLL_MS);
+      return;
+    }
     // buttonevent codes for Friends-of-Hue / Hue Dimmer switches:
     //   x000 = initial press (on)    x002 = short release (on)
     //   x001 = hold               x003 = long release (off)
@@ -414,6 +444,12 @@ export class HomebridgeIthoDaalderop implements DynamicPlatformPlugin {
 
   private handleAutomationSpeedChange(speed: SupportedVirtualRemoteCommands | 'auto'): void {
     if (speed === 'auto') {
+      // A still-running toilet boost may not be cut short — its own timer
+      // will send 'auto' later (and defers to humidity state at that moment)
+      if (this.toiletLightAutomation?.getState() === 'boosting') {
+        this.log.debug('[Humidity] Boost klaar maar toilet-boost actief — ventilator blijft op HIGH');
+        return;
+      }
       // If a schedule is active, apply that speed; otherwise return to medium (CO₂ auto)
       const entry = this.scheduleEngine?.getActiveEntry();
       this.sendVirtualRemoteCommand(entry ? entry.speed : 'medium');

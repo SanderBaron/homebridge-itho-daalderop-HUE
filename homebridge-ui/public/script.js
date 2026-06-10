@@ -611,12 +611,21 @@ function populateSensorDropdowns() {
   populateSelect('mirrorHeater_hueButtonId', state.sensors,
     state.config?.automation?.mirrorHeater?.hueButtonId,
     s => `#${s.id} ${s.name} (${s.type})`);
-  populateSelect('toiletLight_hueSensorId', state.sensors,
-    state.config?.automation?.toiletLight?.hueSensorId,
-    s => `#${s.id} ${s.name} (${s.type})`);
+  // Toilet: een zigbee-schakelaar kan bij Hue als lamp/stopcontact binnenkomen,
+  // dus bied lampen én schakelaars aan. Waarde krijgt een type-prefix zodat de
+  // backend weet wat hij moet pollen; een kale id (legacy) = sensor.
+  const toiletItems = [
+    ...state.lights.map(l  => ({ ...l, _kind: 'light' })),
+    ...state.sensors.map(s => ({ ...s, _kind: 'sensor' })),
+  ];
+  let savedToilet = state.config?.automation?.toiletLight?.hueSensorId || '';
+  if (savedToilet && !savedToilet.includes(':')) savedToilet = 'sensor:' + savedToilet;
+  populateSelect('toiletLight_hueSensorId', toiletItems, savedToilet,
+    i => i._kind === 'light' ? `💡 #${i.id} ${i.name} (lamp)` : `🔘 #${i.id} ${i.name} (${i.type})`,
+    i => `${i._kind}:${i.id}`);
 }
 
-function populateSelect(elementId, items, savedVal, labelFn) {
+function populateSelect(elementId, items, savedVal, labelFn, valueFn) {
   const sel = document.getElementById(elementId);
   if (!sel) return;
   // Prefer an in-session selection; fall back to the saved config value.
@@ -626,9 +635,9 @@ function populateSelect(elementId, items, savedVal, labelFn) {
   sel.innerHTML = '<option value="">(selecteer…)</option>';
   items.forEach(item => {
     const opt = document.createElement('option');
-    opt.value = String(item.id);
+    opt.value = valueFn ? valueFn(item) : String(item.id);
     opt.textContent = labelFn(item);
-    if (String(item.id) === currentVal) opt.selected = true;
+    if (opt.value === currentVal) opt.selected = true;
     sel.appendChild(opt);
   });
 }

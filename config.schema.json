@@ -343,10 +343,10 @@
                 "default": false
               },
               "hueSensorId": {
-                "title": "Hue lamp-ID (toiletlicht)",
+                "title": "Hue lamp- of schakelaar-ID (toiletlicht)",
                 "type": "string",
-                "placeholder": "bijv. 3",
-                "description": "ID van de Hue-lamp die het toiletlicht detecteert. Vul het lamp-ID in, niet het sensor-ID."
+                "placeholder": "bijv. light:3 of sensor:8",
+                "description": "Het Hue-apparaat dat het toiletlicht detecteert. Gebruik 'light:<id>' voor een lamp/stopcontact of 'sensor:<id>' voor een schakelaar. Een kale id wordt als schakelaar behandeld. In de plugin-UI kies je dit gewoon uit een lijst."
               },
               "minOnMinutes": {
                 "title": "Minimale brandduur voor boost (min)",

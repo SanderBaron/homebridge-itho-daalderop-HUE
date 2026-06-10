@@ -85,6 +85,9 @@ export class HumidityAutomation {
 
   /** Called on every MQTT status update with the current humidity reading. */
   update(humidity: number): void {
+    // Sensor dropouts arrive as 0 — ignore them entirely so a 0→real jump
+    // can never count as a rapid rise
+    if (!Number.isFinite(humidity) || humidity <= 0) return;
     this.lastHumidity = humidity;
     this.recordHistory(humidity);
     if (!this.config.enabled) return;
