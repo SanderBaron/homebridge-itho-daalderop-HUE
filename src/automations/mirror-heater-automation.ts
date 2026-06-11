@@ -207,9 +207,12 @@ export class MirrorHeaterAutomation {
 
   private tryActivate(humidity: number, reason: TriggerReason): void {
     const delayMs = this.config.triggerDelayMinutes * 60_000;
+    // Delay anchor: the CVE fan boost when one is running, otherwise the
+    // mirror's own trigger moment — the mirror never activates instantly
+    // just because the fan boost is absent
     const elapsed = this.fanBoostStartedAt
       ? Date.now() - this.fanBoostStartedAt
-      : delayMs; // no fan boost registered → treat delay as already met
+      : 0;
 
     if (elapsed < delayMs) {
       const remainingMs = delayMs - elapsed;

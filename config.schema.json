@@ -314,7 +314,7 @@
                 "default": 5,
                 "minimum": 0,
                 "maximum": 60,
-                "description": "Minimale wachttijd na het inschakelen van de CVE-boost voordat de spiegel kan aangaan. De spiegel beslaat niet direct op het moment dat de RFT-RV reageert."
+                "description": "Minimale wachttijd na het inschakelen van de CVE-boost voordat de spiegel kan aangaan. De spiegel beslaat niet direct op het moment dat de RFT-RV reageert. Is er geen CVE-boost actief, dan telt de vertraging vanaf het moment dat de spiegel-trigger zelf vuurt."
               },
               "durationMinutes": {
                 "title": "Nalooptimer spiegel (min)",
