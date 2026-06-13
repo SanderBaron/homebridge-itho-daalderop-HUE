@@ -56,17 +56,13 @@ Deze plugin begon als fork van [homebridge-itho-daalderop](https://github.com/jv
 
 ## Installatie
 
-Deze plugin staat (nog) niet op NPM. Installeren vanaf GitHub:
+Zoek in de Homebridge UI naar **Homebridge Itho Daalderop HUE** en klik op Installeren. Of via de command line:
 
 ```bash
-git clone https://github.com/SanderBaron/homebridge-itho-daalderop-HUE.git
-cd homebridge-itho-daalderop-HUE
-npm install
-npm run build
-npm link
+npm install -g homebridge-itho-daalderop-hue
 ```
 
-Herstart daarna Homebridge. De plugin verschijnt als `homebridge-itho-daalderop-hue` en is het beste te draaien als **child bridge** (aan te zetten via het QR-icoon op de pluginpagina).
+Draai de plugin bij voorkeur als **child bridge** (aan te zetten via het QR-icoon op de pluginpagina) en herstart daarna Homebridge.
 
 ## Configuratie
 
