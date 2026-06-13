@@ -1,0 +1,74 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Upgrade npm and clear placeholder auth so OIDC takes over
+        run: |
+          npm install -g npm@latest
+          # setup-node writes `//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}`.
+          # Without a NODE_AUTH_TOKEN secret that placeholder confuses npm and
+          # blocks the Trusted Publisher OIDC flow. Strip it.
+          sed -i '/_authToken=/d' "$HOME/.npmrc" || true
+
+      - name: Verify tag matches package.json version
+        run: |
+          PKG_VER=$(node -p "require('./package.json').version")
+          TAG_VER="${GITHUB_REF_NAME#v}"
+          if [ "$PKG_VER" != "$TAG_VER" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME komt niet overeen met package.json versie $PKG_VER"
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test -- --ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Extract release notes from CHANGELOG
+        run: |
+          VER="${GITHUB_REF_NAME#v}"
+          awk -v ver="$VER" '
+            $0 ~ "^#### \\["ver"\\]" { flag=1; next }
+            flag && /^#### / { exit }
+            flag { print }
+          ' CHANGELOG.md > release-notes.md
+          if [ ! -s release-notes.md ]; then
+            echo "Geen CHANGELOG-sectie gevonden voor $VER — lege notes"
+            echo "Release $VER" > release-notes.md
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: release-notes.md
+          name: ${{ github.ref_name }}
+          make_latest: 'true'
+
+      - name: Publish to npm
+        run: npm publish --provenance --access public
