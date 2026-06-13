@@ -223,7 +223,7 @@ export class HomebridgeIthoDaalderop implements DynamicPlatformPlugin {
           triggerLogic:             mirrorCfg.triggerLogic            ?? 'or',
           triggerDelayMinutes:      mirrorCfg.triggerDelayMinutes     ?? 5,
           durationMinutes:          mirrorCfg.durationMinutes         ?? 30,
-          manualButtonTimerMinutes: mirrorCfg.manualButtonTimerMinutes ?? 30,
+          manualButtonTimerMinutes: mirrorCfg.manualButtonTimerMinutes ?? 15,
         },
         this.hueApi,
         this.log,

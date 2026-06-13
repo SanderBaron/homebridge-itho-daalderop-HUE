@@ -39,7 +39,10 @@ export interface MirrorHeaterConfig {
   triggerDelayMinutes: number;
   /** Minutes the mirror heater stays on after it activates */
   durationMinutes: number;
-  /** Minutes the mirror heater stays on when triggered manually via Hue button */
+  /**
+   * Minutes the mirror stays on after a MANUAL switch-on — either via the
+   * optional Hue button or by toggling the mirror's own Hue relay directly.
+   */
   manualButtonTimerMinutes: number;
 }
 
@@ -47,6 +50,12 @@ type MirrorState = 'idle' | 'delay_waiting' | 'active';
 type TriggerReason = 'absolute' | 'rise' | 'absolute+rise';
 
 const BUTTON_POLL_INTERVAL_MS = 5_000;
+/**
+ * After we command the relay ourselves, ignore polled state changes for this
+ * long so an automation-driven on/off is never mistaken for a manual toggle.
+ * Covers HTTP latency plus one poll interval.
+ */
+const MANUAL_SUPPRESS_MS = 8_000;
 
 /**
  * Controls a mirror heater (Hue light) based on the external RFT-RV humidity
@@ -63,7 +72,11 @@ const BUTTON_POLL_INTERVAL_MS = 5_000;
  *   delay_waiting ──(delay timer)──▶ active  (or idle when humidity already dropped)
  *   active ──(durationMinutes timer, started at activation)──▶ idle
  *
- * Manual button trigger bypasses delay and resets the timer.
+ * Manual operation bypasses the humidity logic: switching the relay on by hand
+ * (Hue button or a physical wall switch on the mirror's own relay) starts a
+ * separate manualButtonTimerMinutes auto-off timer; switching it off by hand
+ * cancels any running timer. The relay state is polled to detect this, with
+ * the automation's own commands suppressed so they are never seen as manual.
  */
 export class MirrorHeaterAutomation {
   private state: MirrorState = 'idle';
@@ -77,6 +90,10 @@ export class MirrorHeaterAutomation {
   private lastHumidity: number | null = null;
   /** Last Hue button lastupdated timestamp — used to detect press events. */
   private lastButtonUpdated: string | null = null;
+  /** Last polled on/off state of the mirror relay (null until first poll). */
+  private lastPolledOn: boolean | null = null;
+  /** Ignore polled relay changes until this time — our own commands. */
+  private suppressManualUntil = 0;
   /** Sliding window of (timestamp, humidity) pairs for fast-rise detection. */
   private humidityWindow: Array<{ ts: number; val: number }> = [];
 
@@ -88,12 +105,24 @@ export class MirrorHeaterAutomation {
 
   // ── Public API ─────────────────────────────────────────────────────────────
 
-  /** Start button polling (if hueButtonId is configured). Call once after construction. */
+  /**
+   * Start polling. Always polls the mirror relay state (to detect manual
+   * on/off via Hue or a physical switch); also polls the optional Hue button.
+   * Call once after construction.
+   */
   start(): void {
-    if (!this.config.enabled || !this.config.hueButtonId) return;
-    this.log.info('[Mirror] Knop-polling gestart (interval: 5s)');
-    this.buttonPollInterval = setInterval(() => { void this.pollButton(); }, BUTTON_POLL_INTERVAL_MS);
-    void this.pollButton();
+    if (!this.config.enabled) return;
+    const pollLight = !!this.config.hueLightId;
+    const pollButton = !!this.config.hueButtonId;
+    if (!pollLight && !pollButton) return;
+
+    this.log.info('[Mirror] Status-polling gestart (interval: 5s)');
+    this.buttonPollInterval = setInterval(() => {
+      if (pollLight) void this.pollLight();
+      if (pollButton) void this.pollButton();
+    }, BUTTON_POLL_INTERVAL_MS);
+    if (pollLight) void this.pollLight();
+    if (pollButton) void this.pollButton();
   }
 
   /**
@@ -192,6 +221,7 @@ export class MirrorHeaterAutomation {
 
   // ── Manual trigger ─────────────────────────────────────────────────────────
 
+  /** Hue button press: command the relay on and start the manual timer. */
   private onManualTrigger(): void {
     this.log.info(
       `[Mirror] Handmatig ingeschakeld via Hue knop — ${this.config.manualButtonTimerMinutes} min timer`,
@@ -201,6 +231,30 @@ export class MirrorHeaterAutomation {
     this.state = 'active';
     this.turnOn();
     this.scheduleOff(this.config.manualButtonTimerMinutes);
+  }
+
+  /**
+   * The relay was switched ON by hand (Hue app or a physical wall switch).
+   * The light is already on, so we only start the auto-off timer.
+   */
+  private onManualLightOn(): void {
+    this.log.info(
+      `[Mirror] Handmatig ingeschakeld via schakelaar — ${this.config.manualButtonTimerMinutes} min timer`,
+    );
+    this.cancelDelayTimer();
+    this.cancelOffTimer();
+    this.state = 'active';
+    this.scheduleOff(this.config.manualButtonTimerMinutes);
+  }
+
+  /** The relay was switched OFF by hand — respect it and stop any timer. */
+  private onManualLightOff(): void {
+    if (this.state !== 'idle') {
+      this.log.info('[Mirror] Handmatig uitgeschakeld — timer geannuleerd');
+    }
+    this.cancelDelayTimer();
+    this.cancelOffTimer();
+    this.state = 'idle';
   }
 
   // ── Activation logic ───────────────────────────────────────────────────────
@@ -265,6 +319,8 @@ export class MirrorHeaterAutomation {
   // ── Hue control ────────────────────────────────────────────────────────────
 
   private turnOn(): void {
+    this.suppressManualUntil = Date.now() + MANUAL_SUPPRESS_MS;
+    this.lastPolledOn = true;
     this.hue.setLightOn(this.config.hueLightId, true).catch((err: unknown) => {
       this.log.error(
         `[Mirror] Lamp inschakelen mislukt: ${err instanceof Error ? err.message : String(err)}`,
@@ -273,11 +329,36 @@ export class MirrorHeaterAutomation {
   }
 
   private turnOff(): void {
+    this.suppressManualUntil = Date.now() + MANUAL_SUPPRESS_MS;
+    this.lastPolledOn = false;
     this.hue.setLightOn(this.config.hueLightId, false).catch((err: unknown) => {
       this.log.error(
         `[Mirror] Lamp uitschakelen mislukt: ${err instanceof Error ? err.message : String(err)}`,
       );
     });
+  }
+
+  /**
+   * Poll the mirror relay to detect manual on/off. Our own commands are
+   * ignored via the suppress window so only genuine manual toggles count.
+   */
+  private async pollLight(): Promise<void> {
+    if (!this.config.hueLightId) return;
+    try {
+      const light = await this.hue.getLight(this.config.hueLightId);
+      const on = light.on;
+      if (this.lastPolledOn === null) { this.lastPolledOn = on; return; } // first read
+      if (on === this.lastPolledOn) return; // no change
+      const wasOn = this.lastPolledOn;
+      this.lastPolledOn = on;
+      if (Date.now() < this.suppressManualUntil) return; // our own command
+      if (on && !wasOn) this.onManualLightOn();
+      else if (!on && wasOn) this.onManualLightOff();
+    } catch (err: unknown) {
+      this.log.debug(
+        `[Mirror] Lamp poll fout: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 
   private async pollButton(): Promise<void> {

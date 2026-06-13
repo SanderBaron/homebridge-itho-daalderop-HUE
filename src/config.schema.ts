@@ -129,7 +129,7 @@ export const configSchema = z.object({
           /** Minutes mirror stays on after humidity drops below dropThreshold */
           durationMinutes: z.number().min(1).max(120).default(30),
           /** Minutes mirror stays on when triggered manually via Hue button */
-          manualButtonTimerMinutes: z.number().min(1).max(120).default(30),
+          manualButtonTimerMinutes: z.number().min(1).max(120).default(15),
         })
         .optional(),
 

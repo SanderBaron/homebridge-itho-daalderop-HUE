@@ -282,6 +282,7 @@ async function loadSettings() {
     setVal('mirrorHeater_triggerLogic',      cfg.automation?.mirrorHeater?.triggerLogic      ?? 'or');
     setVal('mirrorHeater_durationMinutes',  cfg.automation?.mirrorHeater?.durationMinutes  ?? 30);
     setVal('mirrorHeater_triggerDelayMinutes', cfg.automation?.mirrorHeater?.triggerDelayMinutes ?? 5);
+    setVal('mirrorHeater_manualButtonTimerMinutes', cfg.automation?.mirrorHeater?.manualButtonTimerMinutes ?? 15);
 
     // Toilet
     setToggle('toiletLight_enabled',      cfg.automation?.toiletLight?.enabled ?? false);
@@ -381,6 +382,7 @@ async function saveSettings() {
         triggerLogic:         getVal('mirrorHeater_triggerLogic') || 'or',
         durationMinutes:      numVal('mirrorHeater_durationMinutes', 30),
         triggerDelayMinutes:  numVal('mirrorHeater_triggerDelayMinutes', 5),
+        manualButtonTimerMinutes: numVal('mirrorHeater_manualButtonTimerMinutes', 15),
       };
       // Optional guard — empty or 0 means: omit from config (disabled)
       const mhDrop = optNumVal('mirrorHeater_dropThreshold');
