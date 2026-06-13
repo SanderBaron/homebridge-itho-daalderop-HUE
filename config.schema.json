@@ -317,20 +317,12 @@
                 "description": "Minimale wachttijd na het inschakelen van de CVE-boost voordat de spiegel kan aangaan. De spiegel beslaat niet direct op het moment dat de RFT-RV reageert. Is er geen CVE-boost actief, dan telt de vertraging vanaf het moment dat de spiegel-trigger zelf vuurt."
               },
               "durationMinutes": {
-                "title": "Nalooptimer spiegel (min)",
-                "type": "number",
-                "default": 30,
-                "minimum": 1,
-                "maximum": 120,
-                "description": "Hoelang de spiegelverwarming aan blijft nadat de vochtigheid onder de uitschakel-drempel zakt."
-              },
-              "manualButtonTimerMinutes": {
-                "title": "Handmatige timer (min)",
+                "title": "Brandtijd na inschakelen (min)",
                 "type": "number",
                 "default": 15,
                 "minimum": 1,
                 "maximum": 120,
-                "description": "Hoelang de spiegel aan blijft na handmatige inschakeling — via de Hue-knop of de schakelaar van de spiegel zelf. Handmatig uitschakelen annuleert de timer."
+                "description": "Hoelang de spiegel aan blijft na elke activatie — RV-sensor, Hue-knop of de schakelaar van de spiegel zelf. Handmatig uitschakelen zet hem direct uit en annuleert de timer."
               }
             }
           },
@@ -636,8 +628,7 @@
           "flex-flow": "row wrap",
           "items": [
             { "key": "automation.mirrorHeater.triggerDelayMinutes" },
-            { "key": "automation.mirrorHeater.durationMinutes" },
-            { "key": "automation.mirrorHeater.manualButtonTimerMinutes" }
+            { "key": "automation.mirrorHeater.durationMinutes" }
           ]
         }
       ]

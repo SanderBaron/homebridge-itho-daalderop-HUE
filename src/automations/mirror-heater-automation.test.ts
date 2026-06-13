@@ -10,7 +10,6 @@ function makeCfg(overrides: Partial<MirrorHeaterConfig> = {}): MirrorHeaterConfi
     triggerThreshold: 70,
     triggerDelayMinutes: 0,
     durationMinutes: 15,
-    manualButtonTimerMinutes: 15,
     ...overrides,
   };
 }
@@ -35,8 +34,8 @@ describe('MirrorHeaterAutomation — manual relay detection', () => {
   beforeEach(() => { vi.useFakeTimers(); hue = makeHue(false); });
   afterEach(() => { vi.useRealTimers(); });
 
-  it('manual switch-on starts the auto-off timer and turns off after manualButtonTimerMinutes', async () => {
-    auto = new MirrorHeaterAutomation(makeCfg({ manualButtonTimerMinutes: 15 }), hue, mockLog);
+  it('manual switch-on starts the single auto-off timer (durationMinutes)', async () => {
+    auto = new MirrorHeaterAutomation(makeCfg({ durationMinutes: 15 }), hue, mockLog);
     await auto['pollLight'](); // first read records off
 
     hue.light.on = true;          // someone flips the wall switch
@@ -63,6 +62,26 @@ describe('MirrorHeaterAutomation — manual relay detection', () => {
     hue.setLightOn.mockClear();
     await vi.advanceTimersByTimeAsync(20 * 60_000);
     expect(hue.setLightOn).not.toHaveBeenCalled();
+  });
+
+  it('manual off then on restarts the timer fresh', async () => {
+    auto = new MirrorHeaterAutomation(makeCfg({ durationMinutes: 15 }), hue, mockLog);
+    await auto['pollLight']();
+    hue.light.on = true;
+    await auto['pollLight']();            // manual on → active
+    await vi.advanceTimersByTimeAsync(10 * 60_000); // 10 of 15 min passed
+
+    hue.light.on = false;
+    await auto['pollLight']();            // off → idle, timer cancelled
+    hue.light.on = true;
+    await auto['pollLight']();            // on again → fresh 15-min timer
+    expect(auto.getState()).toBe('active');
+
+    hue.setLightOn.mockClear();
+    await vi.advanceTimersByTimeAsync(14 * 60_000); // would have been off if old timer survived
+    expect(hue.setLightOn).not.toHaveBeenCalled();   // still on at 14 min into the new timer
+    await vi.advanceTimersByTimeAsync(2 * 60_000);
+    expect(hue.setLightOn).toHaveBeenCalledWith('69', false); // off at 15 min
   });
 
   it('does not flag the automation\'s own activation as manual', async () => {

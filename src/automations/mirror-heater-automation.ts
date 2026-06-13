@@ -37,13 +37,11 @@ export interface MirrorHeaterConfig {
    * activate. The mirror is not immediately fogged on shower start.
    */
   triggerDelayMinutes: number;
-  /** Minutes the mirror heater stays on after it activates */
-  durationMinutes: number;
   /**
-   * Minutes the mirror stays on after a MANUAL switch-on — either via the
-   * optional Hue button or by toggling the mirror's own Hue relay directly.
+   * Minutes the mirror stays on after ANY activation — humidity trigger, Hue
+   * button, or a manual switch-on of the relay. The single auto-off timer.
    */
-  manualButtonTimerMinutes: number;
+  durationMinutes: number;
 }
 
 type MirrorState = 'idle' | 'delay_waiting' | 'active';
@@ -73,10 +71,11 @@ const MANUAL_SUPPRESS_MS = 8_000;
  *   active ──(durationMinutes timer, started at activation)──▶ idle
  *
  * Manual operation bypasses the humidity logic: switching the relay on by hand
- * (Hue button or a physical wall switch on the mirror's own relay) starts a
- * separate manualButtonTimerMinutes auto-off timer; switching it off by hand
- * cancels any running timer. The relay state is polled to detect this, with
- * the automation's own commands suppressed so they are never seen as manual.
+ * (Hue button or a physical wall switch on the mirror's own relay) (re)starts
+ * the same durationMinutes auto-off timer; switching it off by hand cancels any
+ * running timer so the relay stays off. The relay state is polled to detect
+ * this, with the automation's own commands suppressed so they are never seen
+ * as manual.
  */
 export class MirrorHeaterAutomation {
   private state: MirrorState = 'idle';
@@ -221,30 +220,30 @@ export class MirrorHeaterAutomation {
 
   // ── Manual trigger ─────────────────────────────────────────────────────────
 
-  /** Hue button press: command the relay on and start the manual timer. */
+  /** Hue button press: command the relay on and (re)start the timer. */
   private onManualTrigger(): void {
     this.log.info(
-      `[Mirror] Handmatig ingeschakeld via Hue knop — ${this.config.manualButtonTimerMinutes} min timer`,
+      `[Mirror] Handmatig ingeschakeld via Hue knop — ${this.config.durationMinutes} min timer`,
     );
     this.cancelDelayTimer();
     this.cancelOffTimer();
     this.state = 'active';
     this.turnOn();
-    this.scheduleOff(this.config.manualButtonTimerMinutes);
+    this.scheduleOff(this.config.durationMinutes);
   }
 
   /**
    * The relay was switched ON by hand (Hue app or a physical wall switch).
-   * The light is already on, so we only start the auto-off timer.
+   * The light is already on, so we only (re)start the auto-off timer.
    */
   private onManualLightOn(): void {
     this.log.info(
-      `[Mirror] Handmatig ingeschakeld via schakelaar — ${this.config.manualButtonTimerMinutes} min timer`,
+      `[Mirror] Handmatig ingeschakeld via schakelaar — ${this.config.durationMinutes} min timer`,
     );
     this.cancelDelayTimer();
     this.cancelOffTimer();
     this.state = 'active';
-    this.scheduleOff(this.config.manualButtonTimerMinutes);
+    this.scheduleOff(this.config.durationMinutes);
   }
 
   /** The relay was switched OFF by hand — respect it and stop any timer. */

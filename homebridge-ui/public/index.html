@@ -335,18 +335,13 @@
           </div>
           <div class="form-grid two">
             <label>Brandtijd na inschakelen (min)
-              <input id="mirrorHeater_durationMinutes" type="number" min="1" max="120" placeholder="30" />
+              <input id="mirrorHeater_durationMinutes" type="number" min="1" max="120" placeholder="15" />
             </label>
             <label>Vertraging na fan-boost (min)
               <input id="mirrorHeater_triggerDelayMinutes" type="number" min="0" max="60" placeholder="5" />
             </label>
           </div>
-          <div class="form-grid two">
-            <label>Handmatige timer (min)
-              <input id="mirrorHeater_manualButtonTimerMinutes" type="number" min="1" max="120" placeholder="15" />
-            </label>
-          </div>
-          <p class="hint">Zet iemand de spiegel handmatig aan (Hue-knop of de schakelaar van de spiegel zelf), dan gaat hij na deze tijd automatisch weer uit. Handmatig uitschakelen annuleert de timer direct.</p>
+          <p class="hint">Brandtijd geldt voor elke activatie — RV-sensor, Hue-knop of de schakelaar van de spiegel zelf. Handmatig aanzetten herstart de timer; handmatig uitschakelen zet hem direct uit.</p>
         </section>
 
         <!-- ── Toilet-ventilatie ─────────────────────────────────────────── -->

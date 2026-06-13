@@ -126,10 +126,8 @@ export const configSchema = z.object({
            * can activate. The mirror is not immediately fogged on shower start.
            */
           triggerDelayMinutes: z.number().min(0).max(60).default(5),
-          /** Minutes mirror stays on after humidity drops below dropThreshold */
-          durationMinutes: z.number().min(1).max(120).default(30),
-          /** Minutes mirror stays on when triggered manually via Hue button */
-          manualButtonTimerMinutes: z.number().min(1).max(120).default(15),
+          /** Minutes the mirror stays on after any activation (the single auto-off timer) */
+          durationMinutes: z.number().min(1).max(120).default(15),
         })
         .optional(),
 
