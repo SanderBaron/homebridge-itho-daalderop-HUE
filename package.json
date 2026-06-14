@@ -43,7 +43,7 @@
     "prebuild": "node -p \"'export const PLUGIN_VERSION = ' + JSON.stringify(require('./package.json').version) + ';'\" > src/version.ts",
     "build": "rimraf ./dist && tsc --project tsconfig.build.json && resolve-tspaths",
     "prepublishOnly": "npm run lint && npm run build",
-    "pretest": "npm run lint && npm run type-check",
+    "pretest": "npm run set-version && npm run lint && npm run type-check",
     "set-version": "npm run prebuild",
     "homebridge": "homebridge -D",
     "update": "npx npm-check-updates --interactive",
