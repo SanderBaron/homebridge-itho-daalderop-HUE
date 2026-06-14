@@ -140,6 +140,7 @@ class IthoPluginUiServer extends HomebridgePluginUiServer {
     return 'Basic ' + Buffer.from(`${username}:${password || ''}`).toString('base64');
   }
 
+  // Fetches a RESTful API v2 endpoint and unwraps the { status, data } envelope.
   async _fetchEndpoint(ip, path, authHeader) {
     const headers = authHeader ? { Authorization: authHeader } : {};
     try {
@@ -148,8 +149,12 @@ class IthoPluginUiServer extends HomebridgePluginUiServer {
         signal: AbortSignal.timeout(3000),
       });
       if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
-      const data = await res.json();
-      return { ok: true, data };
+      const json = await res.json();
+      if (json && json.status === 'error') {
+        return { ok: false, error: json.message || 'API returned error' };
+      }
+      // v2 wraps the payload in `data`; fall back to the raw body for safety
+      return { ok: true, data: json && json.data !== undefined ? json.data : json };
     } catch (err) {
       return { ok: false, error: err.message };
     }
@@ -159,7 +164,9 @@ class IthoPluginUiServer extends HomebridgePluginUiServer {
     const ip = body && body.deviceIp;
     if (!ip) return { ok: false, error: 'No deviceIp provided' };
     const auth = this._authHeader(body.deviceUsername, body.devicePassword);
-    return this._fetchEndpoint(ip, '/api.html?get=ithostatus', auth);
+    const result = await this._fetchEndpoint(ip, '/api/v2/ithostatus', auth);
+    if (!result.ok) return result;
+    return { ok: true, data: result.data.ithostatus };
   }
 
   async moduleInfo(body) {
@@ -167,14 +174,14 @@ class IthoPluginUiServer extends HomebridgePluginUiServer {
     if (!ip) return { ok: false, error: 'No deviceIp provided' };
     const auth = this._authHeader(body.deviceUsername, body.devicePassword);
     const [statusResult, queueResult] = await Promise.all([
-      this._fetchEndpoint(ip, '/api.html?get=ithostatus', auth),
-      this._fetchEndpoint(ip, '/api.html?get=queue', auth),
+      this._fetchEndpoint(ip, '/api/v2/ithostatus', auth),
+      this._fetchEndpoint(ip, '/api/v2/queue', auth),
     ]);
     return {
       ok: statusResult.ok,
       error: statusResult.ok ? undefined : statusResult.error,
-      status: statusResult.data,
-      queue: queueResult.ok ? queueResult.data : null,
+      status: statusResult.ok ? statusResult.data.ithostatus : undefined,
+      queue: queueResult.ok ? queueResult.data.queue : null,
       meta: {
         deviceIp: ip,
         mqttBroker: body.mqttBroker || null,

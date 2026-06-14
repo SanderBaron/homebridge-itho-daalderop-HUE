@@ -28,23 +28,25 @@ function getVirtualRemoteMapping(): VirtualRemoteMapping {
 }
 
 /**
- * Sanitizes the status payload by replacing `"not available"` with `null`.
+ * Sanitizes a status object by replacing `"not available"` with `null`.
  */
-export function sanitizeStatusPayload<T>(message: string): T {
-  const data = JSON.parse(message);
-
-  // Replace "not available" with null
+export function sanitizeStatusObject<T>(data: Record<string, unknown>): T {
   const sanitizedData = Object.entries(data).map(([key, value]) => {
-    if (typeof value === 'string') {
-      if (value === 'not available') {
-        return [key, null];
-      }
+    if (typeof value === 'string' && value === 'not available') {
+      return [key, null];
     }
 
     return [key, value];
   });
 
   return Object.fromEntries(sanitizedData) as T;
+}
+
+/**
+ * Sanitizes the status payload (raw JSON string) by replacing `"not available"` with `null`.
+ */
+export function sanitizeStatusPayload<T>(message: string): T {
+  return sanitizeStatusObject<T>(JSON.parse(message));
 }
 
 /**

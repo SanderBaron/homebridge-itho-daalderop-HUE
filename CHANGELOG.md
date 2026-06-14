@@ -4,6 +4,12 @@ Alle noemenswaardige wijzigingen aan dit project staan in dit bestand.
 
 Vanaf 2.0.0 is dit de changelog van de [HUE-fork](https://github.com/SanderBaron/homebridge-itho-daalderop-HUE) en wordt hij met de hand bijgehouden. De versies 1.x daaronder komen uit het oorspronkelijke [homebridge-itho-daalderop](https://github.com/jvandenaardweg/homebridge-itho-daalderop) van Jordy van den Aardweg (gegenereerd met [`auto-changelog`](https://github.com/CookPete/auto-changelog)).
 
+#### [2.0.2](https://github.com/SanderBaron/homebridge-itho-daalderop-HUE)
+
+> 14 juni 2026
+
+- feat: overgestapt van de oude NRGWatch WebAPI (`/api.html`) naar de nieuwe **RESTful API v2** (`/api/v2/…`, JSON). Commando's geven nu een `status: success/error`-resultaat terug i.p.v. alleen OK/NOK, met een nettere foutmelding. Raakt de HTTP-client (`src/api/http.ts`) en het dashboard (`homebridge-ui`). Het MQTT-pad is ongewijzigd. (tip van Arjen Hiemstra)
+
 #### [2.0.1](https://github.com/SanderBaron/homebridge-itho-daalderop-HUE)
 
 > 14 juni 2026
