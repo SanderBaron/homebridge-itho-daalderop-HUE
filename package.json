@@ -17,7 +17,7 @@
   "homepage": "https://github.com/SanderBaron/homebridge-itho-daalderop-HUE#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/SanderBaron/homebridge-itho-daalderop-HUE.git"
+    "url": "git+https://github.com/SanderBaron/homebridge-itho-daalderop-HUE.git"
   },
   "bugs": {
     "url": "https://github.com/SanderBaron/homebridge-itho-daalderop-HUE/issues"
