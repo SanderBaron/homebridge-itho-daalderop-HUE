@@ -26,21 +26,32 @@ Deze repo publiceert **automatisch naar npm via GitHub Actions** met npm
 
 ## Eenmalig per NIEUW pakket (bootstrap)
 
-OIDC kan een pakket pas publiceren als er een **Trusted Publisher** aan gekoppeld is.
-Dit doe je één keer op npmjs.com (passkey-login werkt in een normale browser op
-een desktop/telefoon — niet nodig op de headless server):
+npm vereist dat een pakket **al bestaat** voordat OIDC het kan overnemen: een
+Trusted Publisher koppel je op de package-settings-pagina, en die bestaat pas ná
+de eerste publish (bevestigd in npm's docs; een OIDC-publish van een onbestaand
+pakket geeft `404 Not Found`). Daarom is de allereerste publish van een nieuw
+pakket **één keer handmatig** — daarna nooit meer.
 
-1. npmjs.com → ingelogd → een Trusted Publisher toevoegen voor de pakketnaam
-   (een nog niet bestaand pakket mag; het wordt bij de eerste OIDC-publish aangemaakt).
-2. Vul in:
-   - **Publisher:** GitHub Actions
-   - **Organization or user:** `SanderBaron`
-   - **Repository:** de repo-naam (bv. `homebridge-itho-daalderop-HUE`)
-   - **Workflow filename:** `release.yml`
-   - **Environment:** *(leeg laten)*
-3. Daarna één keer een `vX.Y.Z`-tag pushen → de workflow publiceert (en maakt) het pakket.
+**Stap 1 — eerste publish, op een machine met echte terminal + browser** (bv. de
+desktop waar de passkey werkt; NIET de headless server, die kan de passkey-flow niet):
 
-Na deze eenmalige koppeling verloopt elke volgende release volledig automatisch.
+```bash
+git clone <repo-url>
+cd <repo>
+npm install
+npm publish --access public      # opent de browser → bevestig met passkey. Geen token, geen code.
+```
+
+**Stap 2 — Trusted Publisher koppelen** (nu de package-pagina bestaat):
+
+- npmjs.com → het pakket → **Settings** → **Trusted Publisher** → **GitHub Actions**
+  - **Organization or user:** `SanderBaron`
+  - **Repository:** de repo-naam
+  - **Workflow filename:** `release.yml`
+  - **Environment:** *(leeg laten)*
+
+Vanaf dat moment publiceert elke `vX.Y.Z`-tag volledig automatisch via de workflow —
+geen handmatige publish meer.
 
 ## Een nieuwe plugin opzetten met deze methode
 
