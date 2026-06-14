@@ -4,6 +4,12 @@ Alle noemenswaardige wijzigingen aan dit project staan in dit bestand.
 
 Vanaf 2.0.0 is dit de changelog van de [HUE-fork](https://github.com/SanderBaron/homebridge-itho-daalderop-HUE) en wordt hij met de hand bijgehouden. De versies 1.x daaronder komen uit het oorspronkelijke [homebridge-itho-daalderop](https://github.com/jvandenaardweg/homebridge-itho-daalderop) van Jordy van den Aardweg (gegenereerd met [`auto-changelog`](https://github.com/CookPete/auto-changelog)).
 
+#### [2.0.1](https://github.com/SanderBaron/homebridge-itho-daalderop-HUE)
+
+> 14 juni 2026
+
+- fix: geldige JSON Schema `required`-arrays op objectniveau i.p.v. een boolean per veld, zodat de plugin door de Homebridge-verificatie komt
+
 #### [2.0.0](https://github.com/SanderBaron/homebridge-itho-daalderop-HUE)
 
 > 14 juni 2026 — eerste publieke release van de HUE-fork: volledige modernisering en uitbreiding van de onbeheerde 1.x-plugin.
