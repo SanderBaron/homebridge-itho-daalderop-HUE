@@ -15,8 +15,8 @@ describe('config.schema.json', () => {
 
     // now we get an error if we change the property name in config.schema.json and/or our types
     expect(properties).toHaveProperty(nameProperty);
-    expect(properties.name).toHaveProperty('required');
-    expect(properties.name.required).toBe(true);
+    // 'name' is required at the object level (valid JSON Schema required array)
+    expect(configSchemaJson.schema.required).toContain('name');
     expect(properties.name.type).toBe('string');
     expect(properties.name.default).toBe(DEFAULT_BRIDGE_NAME);
 
@@ -35,20 +35,16 @@ describe('config.schema.json', () => {
     const apiProperties = properties.api.properties;
 
     expect(properties).toHaveProperty(apiProperty);
-    expect(apiProperties.protocol).toHaveProperty('required');
-    expect(apiProperties.protocol.required).toBe(true);
+    // protocol, ip and port are required at the api object level (JSON Schema required array)
+    expect(properties.api.required).toEqual(['protocol', 'ip', 'port']);
     expect(apiProperties.protocol.type).toBe('string');
     expect(apiProperties.protocol.default).toBe('mqtt');
     expect(apiProperties.protocol.oneOf.map(o => o.title)).toMatchObject(['MQTT (recommended)', 'HTTP (polling)']);
     expect(apiProperties.protocol.oneOf.map(o => o.enum)).toMatchObject([['mqtt'], ['http']]);
 
-    expect(apiProperties.ip).toHaveProperty('required');
-    expect(apiProperties.ip.required).toBe(true);
     expect(apiProperties.ip.type).toBe('string');
     expect(apiProperties.ip.format).toBe('ipv4');
 
-    expect(apiProperties.port).toHaveProperty('required');
-    expect(apiProperties.port.required).toBe(true);
     expect(apiProperties.port.type).toBe('number');
 
     // username and password are optional

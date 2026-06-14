@@ -7,18 +7,17 @@
 
   "schema": {
     "type": "object",
+    "required": ["name"],
     "properties": {
       "name": {
         "title": "Name",
         "type": "string",
-        "required": true,
         "default": "Itho Daalderop",
         "placeholder": "Itho Daalderop"
       },
       "verboseLogging": {
         "title": "Verbose logging",
         "type": "boolean",
-        "required": false,
         "default": false
       },
 
@@ -28,7 +27,6 @@
           "co2Sensor": {
             "title": "Built-in CO₂ sensor",
             "type": "boolean",
-            "required": false,
             "default": false
           },
           "nonCve": {
@@ -41,11 +39,11 @@
 
       "api": {
         "type": "object",
+        "required": ["protocol", "ip", "port"],
         "properties": {
           "protocol": {
             "title": "Protocol",
             "type": "string",
-            "required": true,
             "default": "mqtt",
             "oneOf": [
               { "title": "MQTT (recommended)", "enum": ["mqtt"] },
@@ -55,7 +53,6 @@
           "ip": {
             "type": "string",
             "title": "IP address",
-            "required": true,
             "placeholder": "192.168.1.10",
             "format": "ipv4",
             "description": "MQTT broker IP (e.g. Mac Mini running Mosquitto) when using MQTT. Itho device IP when using HTTP."
@@ -63,7 +60,6 @@
           "port": {
             "type": "number",
             "title": "Port",
-            "required": true,
             "placeholder": "1883"
           },
           "deviceIp": {
@@ -76,26 +72,22 @@
           "username": {
             "type": "string",
             "title": "MQTT gebruikersnaam",
-            "required": false,
             "placeholder": "Optioneel"
           },
           "password": {
             "type": "string",
             "title": "MQTT wachtwoord",
-            "required": false,
             "placeholder": "Optioneel"
           },
           "deviceUsername": {
             "type": "string",
             "title": "NRGWatch gebruikersnaam",
-            "required": false,
             "placeholder": "Optioneel",
             "description": "Inloggegevens voor de NRGWatch webinterface (alleen invullen als authenticatie is ingeschakeld op het apparaat)."
           },
           "devicePassword": {
             "type": "string",
             "title": "NRGWatch wachtwoord",
-            "required": false,
             "placeholder": "Optioneel"
           }
         }
@@ -179,7 +171,10 @@
                 "type": "string",
                 "default": "badkamer",
                 "oneOf": [
-                  { "title": "Badkamer (absolute + snelle stijging + cooldown)", "enum": ["badkamer"] },
+                  {
+                    "title": "Badkamer (absolute + snelle stijging + cooldown)",
+                    "enum": ["badkamer"]
+                  },
                   { "title": "Wasruimte (drie drempelzones, geen cooldown)", "enum": ["wasruimte"] }
                 ]
               },
@@ -371,12 +366,12 @@
                 "type": "array",
                 "items": {
                   "type": "object",
+                  "required": ["label", "from", "to", "speed"],
                   "properties": {
                     "label": {
                       "title": "Label",
                       "type": "string",
-                      "placeholder": "Morning airing",
-                      "required": true
+                      "placeholder": "Morning airing"
                     },
                     "days": {
                       "title": "Days",
@@ -390,19 +385,16 @@
                     "from": {
                       "title": "From (HH:MM)",
                       "type": "string",
-                      "placeholder": "07:00",
-                      "required": true
+                      "placeholder": "07:00"
                     },
                     "to": {
                       "title": "To (HH:MM)",
                       "type": "string",
-                      "placeholder": "08:00",
-                      "required": true
+                      "placeholder": "08:00"
                     },
                     "speed": {
                       "title": "Fan speed",
                       "type": "string",
-                      "required": true,
                       "oneOf": [
                         { "title": "Low", "enum": ["low"] },
                         { "title": "Medium", "enum": ["medium"] },
@@ -451,34 +443,22 @@
         {
           "type": "flex",
           "flex-flow": "row wrap",
-          "items": [
-            { "key": "api.protocol" },
-            { "key": "api.ip" },
-            { "key": "api.port" }
-          ]
+          "items": [{ "key": "api.protocol" }, { "key": "api.ip" }, { "key": "api.port" }]
         },
         {
           "type": "flex",
           "flex-flow": "row wrap",
-          "items": [
-            { "key": "api.deviceIp" }
-          ]
+          "items": [{ "key": "api.deviceIp" }]
         },
         {
           "type": "flex",
           "flex-flow": "row wrap",
-          "items": [
-            { "key": "api.username" },
-            { "key": "api.password" }
-          ]
+          "items": [{ "key": "api.username" }, { "key": "api.password" }]
         },
         {
           "type": "flex",
           "flex-flow": "row wrap",
-          "items": [
-            { "key": "api.deviceUsername" },
-            { "key": "api.devicePassword" }
-          ]
+          "items": [{ "key": "api.deviceUsername" }, { "key": "api.devicePassword" }]
         },
         { "key": "verboseLogging" },
         { "key": "dataLogging.enabled" }
@@ -491,9 +471,7 @@
       "description": "The Turbo switch in HomeKit runs the fan at full speed for a set time, then automatically returns to auto mode.",
       "expandable": true,
       "expanded": true,
-      "items": [
-        { "key": "automation.turbo.durationMinutes" }
-      ]
+      "items": [{ "key": "automation.turbo.durationMinutes" }]
     },
 
     {
@@ -508,8 +486,14 @@
           "type": "flex",
           "flex-flow": "row wrap",
           "items": [
-            { "key": "automation.humidity.boostThreshold", "description": "Fan goes to HIGH when this % is reached." },
-            { "key": "automation.humidity.dropThreshold", "description": "Cooldown timer starts when humidity drops below this %." }
+            {
+              "key": "automation.humidity.boostThreshold",
+              "description": "Fan goes to HIGH when this % is reached."
+            },
+            {
+              "key": "automation.humidity.dropThreshold",
+              "description": "Cooldown timer starts when humidity drops below this %."
+            }
           ]
         },
         {
@@ -551,8 +535,13 @@
               "key": "automation.schedule.entries[].days",
               "type": "checkboxes",
               "titleMap": {
-                "mon": "Ma", "tue": "Di", "wed": "Wo", "thu": "Do",
-                "fri": "Vr", "sat": "Za", "sun": "Zo"
+                "mon": "Ma",
+                "tue": "Di",
+                "wed": "Wo",
+                "thu": "Do",
+                "fri": "Vr",
+                "sat": "Za",
+                "sun": "Zo"
               }
             }
           ]
@@ -566,10 +555,7 @@
       "description": "Stuurt elke nacht automatisch het commando 'automatisch' — veiligheidsnet zodat de CVE nooit per ongeluk voor langere tijd in een ongewenste stand blijft staan.",
       "expandable": true,
       "expanded": true,
-      "items": [
-        { "key": "dailyReset.enabled" },
-        { "key": "dailyReset.time" }
-      ]
+      "items": [{ "key": "dailyReset.enabled" }, { "key": "dailyReset.time" }]
     },
 
     {
@@ -582,10 +568,7 @@
         {
           "type": "flex",
           "flex-flow": "row wrap",
-          "items": [
-            { "key": "hue.bridgeIp" },
-            { "key": "hue.apiKey" }
-          ]
+          "items": [{ "key": "hue.bridgeIp" }, { "key": "hue.apiKey" }]
         }
       ]
     },
